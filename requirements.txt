@@ -1,0 +1,9 @@
+pandas==2.2.2
+numpy==2.2.6
+nselib==2.4.6
+yfinance==0.2.40
+nsepy==0.8
+pandas-ta-classic==0.3.14b2
+requests==2.32.3
+pytest==8.2.0
+pytest-cov==5.0.0
