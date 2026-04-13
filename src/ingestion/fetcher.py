@@ -1,4 +1,11 @@
-"""EOD market data fetching helpers for NSE symbols."""
+"""EOD market data fetching helpers for NSE symbols.
+
+Fetch strategy (fastest to slowest):
+  1. nselib bhavcopy  — official NSE CSV, covers all equities in one download, fast.
+  2. yfinance batch   — yf.download() for all symbols at once; use for backfill or when
+                        nselib is unavailable.  ~3-5 min for 750 symbols vs 20+ min serial.
+  3. yfinance serial  — one Ticker per symbol; fallback of last resort for small symbol lists.
+"""
 
 import logging
 import time
@@ -101,8 +108,93 @@ def fetch_via_nselib(symbols: List[str], fetch_date: str) -> List[Dict]:
     return filtered
 
 
+def fetch_via_yfinance_batch(
+    symbols: List[str],
+    fetch_date: str,
+    lookback_days: int = 7,
+) -> List[Dict]:
+    """Fetch EOD OHLCV for many symbols in a single yf.download() call (fast batch mode).
+
+    Recommended for universes > 50 symbols.  Much faster than serial Ticker calls.
+    fetch_date is the target date; lookback_days controls the download window.
+    """
+    if not symbols:
+        return []
+
+    target = datetime.strptime(fetch_date, "%Y-%m-%d").date()
+    start = (target - timedelta(days=lookback_days)).isoformat()
+    end = (target + timedelta(days=1)).isoformat()
+
+    tickers = [f"{s}.NS" for s in symbols]
+    logger.info("yfinance batch download: %d symbols, window %s → %s", len(tickers), start, end)
+
+    try:
+        raw = yf.download(
+            tickers=tickers,
+            start=start,
+            end=end,
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("yfinance batch download failed: %s", exc)
+        return []
+
+    if raw.empty:
+        logger.warning("yfinance batch: empty result for %s", fetch_date)
+        return []
+
+    results: List[Dict] = []
+    failed: List[str] = []
+
+    # yf.download with multiple tickers returns a MultiIndex column: (field, ticker)
+    for symbol, ticker in zip(symbols, tickers):
+        try:
+            # Slice columns for this ticker
+            if isinstance(raw.columns, pd.MultiIndex):
+                sym_df = raw.xs(ticker, axis=1, level=1)
+            else:
+                sym_df = raw  # single-ticker fallback (shouldn't happen in batch)
+
+            sym_df = sym_df.copy()
+            sym_df.index = pd.to_datetime(sym_df.index).date
+            if target not in sym_df.index:
+                logger.debug("yfinance batch: %s missing for %s", symbol, fetch_date)
+                failed.append(symbol)
+                continue
+
+            row = sym_df.loc[target]
+            # Skip rows with NaN prices (delisted / no-data symbols)
+            if pd.isna(row.get("Close", float("nan"))):
+                failed.append(symbol)
+                continue
+
+            results.append({
+                "symbol": symbol,
+                "date": fetch_date,
+                "open":   round(float(row["Open"]),  2),
+                "high":   round(float(row["High"]),  2),
+                "low":    round(float(row["Low"]),   2),
+                "close":  round(float(row["Close"]), 2),
+                "volume": int(row["Volume"]),
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("yfinance batch: error parsing %s: %s", symbol, exc)
+            failed.append(symbol)
+
+    if failed:
+        logger.warning("yfinance batch: %d symbols missing/failed: %s", len(failed), failed[:10])
+    logger.info("yfinance batch: %d/%d rows collected for %s", len(results), len(symbols), fetch_date)
+    return results
+
+
 def fetch_via_yfinance(symbols: List[str], fetch_date: str) -> List[Dict]:
-    """Fetch EOD OHLCV data for symbols via yfinance as a final fallback."""
+    """Fetch EOD OHLCV data for symbols via yfinance (serial, one Ticker per symbol).
+
+    Use fetch_via_yfinance_batch() for large universes — it is significantly faster.
+    This serial fallback is retained for small symbol lists and targeted retries.
+    """
     results: List[Dict] = []
     failed: List[str] = []
     target = datetime.strptime(fetch_date, "%Y-%m-%d").date()
