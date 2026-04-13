@@ -1,5 +1,6 @@
 data/*.db
 data/watchlists/*.csv
+data/universe_cache/*.csv
 logs/*.log
 __pycache__/
 *.pyc

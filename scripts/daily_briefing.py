@@ -5,8 +5,9 @@ import argparse
 import logging
 import os
 import sys
-from datetime import date
+from datetime import date, datetime, time
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -41,6 +42,33 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def is_eod_data_expected(
+    fetch_date: str, current_time: Optional[datetime] = None
+) -> bool:
+    """Return whether NSE EOD data should be available for the requested date."""
+    if current_time is None:
+        current_time = datetime.now(IST)
+    elif current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=IST)
+    else:
+        current_time = current_time.astimezone(IST)
+
+    target_date = pd.Timestamp(fetch_date).date()
+    if target_date < current_time.date():
+        return True
+    if target_date > current_time.date():
+        return False
+
+    pull_hour, pull_minute = [int(part) for part in config.DATA_PULL_TIME.split(":", maxsplit=1)]
+    pull_time = datetime.combine(
+        target_date,
+        time(hour=pull_hour, minute=pull_minute),
+        tzinfo=IST,
+    )
+    return current_time >= pull_time
 
 
 def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] = None) -> None:
@@ -65,6 +93,10 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
     requested_dates = get_business_day_range(start_date, fetch_date)
     stored_dates = set(get_stored_dates(start_date, fetch_date))
     missing_dates = [current_date for current_date in requested_dates if current_date not in stored_dates]
+    target_date_expected = is_eod_data_expected(fetch_date)
+    fetch_dates = missing_dates
+    if not target_date_expected:
+        fetch_dates = [current_date for current_date in missing_dates if current_date < fetch_date]
 
     print(f"\n[1/4] Ensuring OHLCV history for {len(symbols)} symbols...")
     print(
@@ -72,23 +104,27 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
         f"{len(missing_dates)} trading days missing from the DB"
     )
 
-    rows = fetch_eod_data_for_dates(symbols, missing_dates)
+    rows = fetch_eod_data_for_dates(symbols, fetch_dates)
     if rows:
         upsert_ohlcv(rows)
         print(f"      OK {len(rows)} OHLCV rows fetched and stored")
     elif not missing_dates:
         print("      OK Required history already present in the DB")
-    else:
-        # All "missing" calendar dates returned empty data — they are likely NSE
-        # holidays.  Check whether the target date itself is in the DB (from a
-        # previous run) before deciding to abort.
-        target_in_db = fetch_date in set(get_stored_dates(fetch_date, fetch_date))
-        if target_in_db:
+
+    target_in_db = fetch_date in set(get_stored_dates(fetch_date, fetch_date))
+    if target_in_db and missing_dates and not rows:
+        print(
+            f"      OK Missing dates were NSE holidays; "
+            f"target date {fetch_date} data already present in DB"
+        )
+    elif not target_in_db:
+        if not target_date_expected:
             print(
-                f"      OK Missing dates were NSE holidays; "
-                f"target date {fetch_date} data already present in DB"
+                f"      Waiting for NSE EOD data for {fetch_date}; "
+                f"rerun after {config.DATA_PULL_TIME} IST"
             )
-        else:
+            return
+        if missing_dates:
             print(
                 "      X No data fetched and target date not in DB — "
                 "is today a market holiday?"

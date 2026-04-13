@@ -1,4 +1,4 @@
-"""Central configuration for the Dhanustambha Phase 1 MVP."""
+"""Central configuration for the Dhanustambha trading platform."""
 
 import os
 
@@ -6,11 +6,15 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "market.db")
 WATCHLIST_DIR = os.path.join(BASE_DIR, "data", "watchlists")
+UNIVERSE_CACHE_DIR = os.path.join(BASE_DIR, "data", "universe_cache")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 
-UNIVERSE = "NIFTY500"
+# Universe: 'NIFTY50' (fast/dev), 'NIFTY500' (~500 symbols), 'NIFTY750' (NIFTY500+Smallcap250)
+UNIVERSE = "NIFTY750"
 MAX_WATCHLIST_SIZE = 10
 BRIEFING_HISTORY_DAYS = 60
+# How many days before re-downloading NSE constituent CSVs from NSE archives
+UNIVERSE_REFRESH_DAYS = 7
 
 # ---------------------------------------------------------------------------
 # Market Monitor thresholds
@@ -54,10 +58,16 @@ TI_MIN_DAYS_ABOVE_MA50 = 30   # Stock must be above MA50 for >= N of last 50 day
 TI_MIN_VOLUME_RATIO = 1.3     # Breakout-day volume / 20d avg volume
 TI_MAX_ATR_PCT = 0.03         # ATR(14)/close < this → "quiet" low-volatility trend
 
-TRADE_RISK_PCT = 0.01
-TRADE_MAX_POSITION_PCT = 0.10
-TRADE_MAX_OPEN = 5
-TRADE_DEFENSIVE_SIZE_FACTOR = 0.5
+# ---------------------------------------------------------------------------
+# Trade management (Phase 2)
+# ---------------------------------------------------------------------------
+# Set ACCOUNT_SIZE to your actual trading capital in INR before using the sizer.
+ACCOUNT_SIZE = 500_000          # ₹5 lakh default — override per your actual capital
+TRADE_RISK_PCT = 0.01           # Risk 1% of account per trade
+TRADE_MAX_POSITION_PCT = 0.10   # No single position > 10% of account
+TRADE_MAX_OPEN = 5              # Max 5 concurrent open trades
+TRADE_DEFENSIVE_SIZE_FACTOR = 0.5  # Halve position size in DEFENSIVE market conditions
 
 DATA_FETCH_RETRY_ATTEMPTS = 3
 DATA_FETCH_TIMEOUT_SECONDS = 30
+DATA_PULL_TIME = "16:30"
