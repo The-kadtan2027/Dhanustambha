@@ -39,6 +39,7 @@ def test_init_db_creates_tables(tmp_db):
     assert "symbols" in tables
     assert "breadth" in tables
     assert "watchlist" in tables
+    assert "trades" in tables
 
 
 def test_upsert_ohlcv_inserts_new_row(tmp_db):
