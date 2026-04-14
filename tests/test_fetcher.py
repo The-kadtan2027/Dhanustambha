@@ -3,7 +3,11 @@
 import pandas as pd
 import src.ingestion.fetcher as fetcher
 
-from src.ingestion.fetcher import normalize_nselib_bhavcopy, parse_bhavcopy_rows
+from src.ingestion.fetcher import (
+    normalize_nselib_bhavcopy,
+    normalize_nselib_history,
+    parse_bhavcopy_rows,
+)
 from src.ingestion.symbols import get_universe_symbols
 
 
@@ -110,6 +114,43 @@ def test_normalize_nselib_bhavcopy_extracts_eq_rows():
     assert result[0]["date"] == "2025-04-11"
 
 
+def test_normalize_nselib_history_extracts_eq_rows():
+    """normalize_nselib_history should map nselib history rows into OHLCV records."""
+    df = pd.DataFrame(
+        [
+            {
+                "Symbol": "RELIANCE",
+                "Series": "EQ",
+                "Date": "09-Apr-2025",
+                "OpenPrice": "1,169.50",
+                "HighPrice": "1,189.80",
+                "LowPrice": "1,168.00",
+                "ClosePrice": "1,185.90",
+                "TotalTradedQuantity": "85,76,832",
+            },
+            {
+                "Symbol": "RELIANCE",
+                "Series": "BE",
+                "Date": "10-Apr-2025",
+                "OpenPrice": "1,180.00",
+                "HighPrice": "1,182.00",
+                "LowPrice": "1,170.00",
+                "ClosePrice": "1,171.00",
+                "TotalTradedQuantity": "1,000",
+            },
+        ]
+    )
+
+    result = normalize_nselib_history(df, symbol="RELIANCE")
+
+    assert len(result) == 1
+    assert result[0]["symbol"] == "RELIANCE"
+    assert result[0]["date"] == "2025-04-09"
+    assert result[0]["open"] == 1169.5
+    assert result[0]["close"] == 1185.9
+    assert result[0]["volume"] == 8576832
+
+
 def test_get_business_day_range_skips_weekends():
     """get_business_day_range should return only business dates."""
     result = fetcher.get_business_day_range("2025-04-11", "2025-04-15")
@@ -191,18 +232,18 @@ def test_load_index_symbols_returns_clean_strings(tmp_path, monkeypatch):
 
 
 def test_get_universe_nifty750_deduplicates(monkeypatch):
-    """NIFTY750 universe must be a deduplicated union of NIFTY500 and SMALLCAP250."""
+    """NIFTY750 universe must be a deduplicated union of NIFTY500 and MICROCAP250."""
     import src.ingestion.symbols as sym_mod
 
     nifty500_syms = ["AAA", "BBB", "CCC"]
-    smallcap_syms = ["CCC", "DDD", "EEE"]  # CCC is in both
+    microcap_syms = ["CCC", "DDD", "EEE"]  # CCC is in both
 
     # Stub load_index_symbols
     def fake_load(index_name):
         if index_name == "NIFTY500":
             return nifty500_syms
-        if index_name == "SMALLCAP250":
-            return smallcap_syms
+        if index_name == "MICROCAP250":
+            return microcap_syms
         return []
 
     monkeypatch.setattr(sym_mod, "load_index_symbols", fake_load)

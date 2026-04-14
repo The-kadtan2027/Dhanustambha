@@ -2,15 +2,17 @@
 
 Fetch strategy (fastest to slowest):
   1. nselib bhavcopy  — official NSE CSV, covers all equities in one download, fast.
+  2. nselib history   — official NSE per-symbol history, reliable for calibration backfills.
   2. yfinance batch   — yf.download() for all symbols at once; use for backfill or when
                         nselib is unavailable.  ~3-5 min for 750 symbols vs 20+ min serial.
   3. yfinance serial  — one Ticker per symbol; fallback of last resort for small symbol lists.
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import time
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 from nselib import capital_market
@@ -20,6 +22,16 @@ import config
 
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_numeric(value: object) -> float:
+    """Convert NSE-formatted numeric strings into floats."""
+    return float(str(value).replace(",", "").strip())
+
+
+def _parse_integer(value: object) -> int:
+    """Convert NSE-formatted numeric strings into integers."""
+    return int(_parse_numeric(value))
 
 
 def get_business_day_range(start_date: str, end_date: str) -> List[str]:
@@ -80,6 +92,30 @@ def normalize_nselib_bhavcopy(df: pd.DataFrame, fetch_date: str) -> List[Dict]:
                 row.get("TckrSymb", "?"),
                 exc,
             )
+    return result
+
+
+def normalize_nselib_history(df: pd.DataFrame, symbol: str) -> List[Dict]:
+    """Normalize nselib historical price-volume rows into OHLCV dictionaries."""
+    result = []
+    for _, row in df.iterrows():
+        if str(row.get("Series", "")).strip() != "EQ":
+            continue
+        try:
+            trading_date = pd.to_datetime(str(row["Date"]), dayfirst=True).date().isoformat()
+            result.append(
+                {
+                    "symbol": symbol,
+                    "date": trading_date,
+                    "open": round(_parse_numeric(row["OpenPrice"]), 2),
+                    "high": round(_parse_numeric(row["HighPrice"]), 2),
+                    "low": round(_parse_numeric(row["LowPrice"]), 2),
+                    "close": round(_parse_numeric(row["ClosePrice"]), 2),
+                    "volume": _parse_integer(row["TotalTradedQuantity"]),
+                }
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Skipping malformed historical row for %s: %s", symbol, exc)
     return result
 
 
@@ -187,6 +223,154 @@ def fetch_via_yfinance_batch(
         logger.warning("yfinance batch: %d symbols missing/failed: %s", len(failed), failed[:10])
     logger.info("yfinance batch: %d/%d rows collected for %s", len(results), len(symbols), fetch_date)
     return results
+
+
+def fetch_historical_via_yfinance_batch(
+    symbols: List[str],
+    start_date: str,
+    end_date: str,
+    chunk_size: int = 100,
+) -> List[Dict]:
+    """Fetch historical OHLCV rows in yfinance batches for a date range."""
+    if not symbols:
+        return []
+
+    results: List[Dict] = []
+    start = pd.Timestamp(start_date).date().isoformat()
+    end = (pd.Timestamp(end_date).date() + timedelta(days=1)).isoformat()
+
+    for offset in range(0, len(symbols), chunk_size):
+        chunk = symbols[offset : offset + chunk_size]
+        tickers = [f"{symbol}.NS" for symbol in chunk]
+        logger.info(
+            "yfinance historical batch: chunk %d-%d of %d symbols",
+            offset + 1,
+            min(offset + chunk_size, len(symbols)),
+            len(symbols),
+        )
+        try:
+            raw = yf.download(
+                tickers=tickers,
+                start=start,
+                end=end,
+                auto_adjust=False,
+                progress=False,
+                threads=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("yfinance historical batch failed for chunk starting %d: %s", offset, exc)
+            continue
+
+        if raw.empty:
+            logger.warning("yfinance historical batch returned empty data for chunk starting %d", offset)
+            continue
+
+        for symbol, ticker in zip(chunk, tickers):
+            try:
+                if isinstance(raw.columns, pd.MultiIndex):
+                    symbol_df = raw.xs(ticker, axis=1, level=1)
+                else:
+                    symbol_df = raw.copy()
+
+                symbol_df = symbol_df.dropna(subset=["Close"]).copy()
+                if symbol_df.empty:
+                    continue
+
+                for timestamp, row in symbol_df.iterrows():
+                    trading_date = pd.Timestamp(timestamp).date().isoformat()
+                    results.append(
+                        {
+                            "symbol": symbol,
+                            "date": trading_date,
+                            "open": round(float(row["Open"]), 2),
+                            "high": round(float(row["High"]), 2),
+                            "low": round(float(row["Low"]), 2),
+                            "close": round(float(row["Close"]), 2),
+                            "volume": int(row["Volume"]),
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to parse historical batch rows for %s: %s", symbol, exc)
+
+    logger.info(
+        "yfinance historical batch: collected %d rows for %d symbols from %s to %s",
+        len(results),
+        len(symbols),
+        start_date,
+        end_date,
+    )
+    return results
+
+
+def fetch_historical_via_nselib(
+    symbols: List[str],
+    start_date: str,
+    end_date: str,
+    max_workers: int = 8,
+) -> List[Dict]:
+    """Fetch historical OHLCV rows from nselib's per-symbol price-volume endpoint."""
+    if not symbols:
+        return []
+
+    from_date = pd.Timestamp(start_date).strftime("%d-%m-%Y")
+    to_date = pd.Timestamp(end_date).strftime("%d-%m-%Y")
+    results: List[Dict] = []
+
+    def fetch_one(symbol: str) -> List[Dict]:
+        """Fetch and normalize one symbol's historical series."""
+        try:
+            history_df = capital_market.price_volume_data(
+                symbol=symbol,
+                from_date=from_date,
+                to_date=to_date,
+            )
+        except Exception as exc:  # noqa: BLE001 - upstream library raises several types
+            logger.warning("nselib historical fetch failed for %s: %s", symbol, exc)
+            return []
+
+        if history_df.empty:
+            logger.info("nselib historical returned no rows for %s", symbol)
+            return []
+
+        return normalize_nselib_history(history_df, symbol)
+
+    worker_count = max(1, min(max_workers, len(symbols)))
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {executor.submit(fetch_one, symbol): symbol for symbol in symbols}
+        for future in as_completed(futures):
+            results.extend(future.result())
+
+    logger.info(
+        "nselib historical: collected %d rows for %d symbols from %s to %s",
+        len(results),
+        len(symbols),
+        start_date,
+        end_date,
+    )
+    return results
+
+
+def fetch_historical_data(
+    symbols: List[str],
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    """Fetch historical OHLCV, preferring NSE data and falling back to yfinance if needed."""
+    if not symbols:
+        return []
+
+    nselib_rows = fetch_historical_via_nselib(symbols, start_date, end_date)
+    fetched_symbols = {row["symbol"] for row in nselib_rows}
+    missing_symbols = [symbol for symbol in symbols if symbol not in fetched_symbols]
+    if not missing_symbols:
+        return nselib_rows
+
+    logger.warning(
+        "nselib historical missed %d symbols; falling back to yfinance for those names",
+        len(missing_symbols),
+    )
+    fallback_rows = fetch_historical_via_yfinance_batch(missing_symbols, start_date, end_date)
+    return nselib_rows + fallback_rows
 
 
 def fetch_via_yfinance(symbols: List[str], fetch_date: str) -> List[Dict]:

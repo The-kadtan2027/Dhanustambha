@@ -11,8 +11,9 @@ NSE constituent CSV URLs (unauthenticated, plain CSV):
   NIFTY 500       : https://archives.nseindia.com/content/indices/ind_nifty500list.csv
   Midcap 150      : https://archives.nseindia.com/content/indices/ind_niftymidcap150list.csv
   Smallcap 250    : https://archives.nseindia.com/content/indices/ind_niftysmallcap250list.csv
+  Microcap 250    : https://archives.nseindia.com/content/indices/ind_niftymicrocap250_list.csv
 
-The combined NIFTY750 universe = deduplicated NIFTY500 + Smallcap250.
+The combined NIFTY750 universe = deduplicated NIFTY500 + Microcap250.
 """
 
 import logging
@@ -29,8 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Hardcoded NIFTY 50 — used as dev/test fallback and never needs a network call
-# Composition as of April 2026 (NSE official).
+# Hardcoded NIFTY 50 — used as dev/test fallback and never needs a network call.
+# This list is only the offline fallback. Production calls should prefer the
+# official NSE constituent CSV via load_index_symbols("NIFTY50").
 # ---------------------------------------------------------------------------
 NIFTY50: List[str] = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
@@ -53,6 +55,7 @@ _NSE_CONSTITUENT_URLS: Dict[str, str] = {
     "NIFTY500":     "https://archives.nseindia.com/content/indices/ind_nifty500list.csv",
     "MIDCAP150":    "https://archives.nseindia.com/content/indices/ind_niftymidcap150list.csv",
     "SMALLCAP250":  "https://archives.nseindia.com/content/indices/ind_niftysmallcap250list.csv",
+    "MICROCAP250":  "https://archives.nseindia.com/content/indices/ind_niftymicrocap250_list.csv",
 }
 
 _NSE_HEADERS = {
@@ -107,9 +110,8 @@ def _parse_symbol_column(df: pd.DataFrame) -> List[str]:
         logger.error("Could not find 'Symbol' column in constituent CSV. Columns: %s", df.columns.tolist())
         return []
     symbols = [str(s).strip().upper() for s in df[col].dropna()]
-    # Filter out blank or obviously invalid entries
     symbols = [s for s in symbols if s and s != "NAN" and len(s) <= 20]
-    return symbols
+    return list(dict.fromkeys(symbols))
 
 
 def load_index_symbols(index_name: str) -> List[str]:
@@ -170,14 +172,14 @@ def get_universe_symbols(universe: str = "NIFTY500") -> List[str]:
 
     Args:
         universe: One of 'NIFTY50', 'NIFTY50_TEST', 'NIFTY500', 'NIFTY750'.
-                  'NIFTY750' = deduplicated union of NIFTY500 + SMALLCAP250.
+                  'NIFTY750' = deduplicated union of NIFTY500 + MICROCAP250.
 
     Returns:
         Sorted, deduplicated list of NSE symbol strings.
     """
-    # Fast hardcoded paths — no I/O
+    # Fast hardcoded path — no I/O
     if universe == "NIFTY50":
-        return list(NIFTY50)
+        return load_index_symbols("NIFTY50")
     if universe == "NIFTY50_TEST":
         return list(NIFTY50_TEST)
 
@@ -187,11 +189,15 @@ def get_universe_symbols(universe: str = "NIFTY500") -> List[str]:
 
     if universe == "NIFTY750":
         nifty500 = load_index_symbols("NIFTY500")
-        smallcap250 = load_index_symbols("SMALLCAP250")
-        combined = sorted(set(nifty500) | set(smallcap250))
-        logger.info("NIFTY750 universe: %d symbols (NIFTY500=%d, SC250=%d, overlap=%d)",
-                    len(combined), len(nifty500), len(smallcap250),
-                    len(set(nifty500) & set(smallcap250)))
+        microcap250 = load_index_symbols("MICROCAP250")
+        combined = sorted(set(nifty500) | set(microcap250))
+        logger.info(
+            "NIFTY750 universe: %d symbols (NIFTY500=%d, MC250=%d, overlap=%d)",
+            len(combined),
+            len(nifty500),
+            len(microcap250),
+            len(set(nifty500) & set(microcap250)),
+        )
         return combined
 
     logger.warning("Unknown universe '%s', defaulting to NIFTY50", universe)
