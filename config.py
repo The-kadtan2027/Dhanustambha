@@ -46,7 +46,7 @@ MB_MAX_PRIOR_RUN = 15.0      # Skip stocks already up >this% in the prior 10 day
 # Episodic Pivot scanner thresholds
 # ---------------------------------------------------------------------------
 EP_MIN_GAP_PCT = 4.0           # Minimum gap-up % from previous close at open
-EP_MIN_GAP_VOLUME_RATIO = 3.0  # Gap-day volume / 20d avg volume
+EP_MIN_GAP_VOLUME_RATIO = 5.0  # Gap-day volume / 20d avg volume
 EP_MAX_DAYS_SINCE_GAP = 5      # Only flag if gap happened within N trading days
 
 # ---------------------------------------------------------------------------
@@ -54,9 +54,9 @@ EP_MAX_DAYS_SINCE_GAP = 5      # Only flag if gap happened within N trading days
 # ---------------------------------------------------------------------------
 TI_HIGH_LOOKBACK_DAYS = 50    # N-day high used as breakout reference (≈10 weeks)
 TI_MA50_TREND_LOOKBACK = 20   # MA50 must be rising vs N days ago
-TI_MIN_DAYS_ABOVE_MA50 = 30   # Stock must be above MA50 for >= N of last 50 days
+TI_MIN_DAYS_ABOVE_MA50 = 40   # Stock must be above MA50 for >= N of last 50 days
 TI_MIN_VOLUME_RATIO = 1.3     # Breakout-day volume / 20d avg volume
-TI_MAX_ATR_PCT = 0.03         # ATR(14)/close < this → "quiet" low-volatility trend
+TI_MAX_ATR_PCT = 0.05         # ATR(14)/close < this → "quiet" low-volatility trend
 
 # ---------------------------------------------------------------------------
 # Trade management (Phase 2)

@@ -58,20 +58,16 @@ def detect_momentum_burst(
         if not (min_pct <= pct_change <= max_pct):
             continue
 
-        prior_history = ordered.iloc[: -(lookback + 1)]
-        if len(prior_history) >= 11:
-            prior_runs = []
-            for start_idx in range(len(prior_history) - 10):
-                start_close = prior_history.iloc[start_idx]["close"]
-                end_close = prior_history.iloc[start_idx + 10]["close"]
-                prior_runs.append((end_close - start_close) / start_close * 100)
-
-            max_observed_prior_run = max(prior_runs) if prior_runs else 0.0
-            if max_observed_prior_run > max_prior_run:
+        prior_window = ordered.iloc[-(lookback + 11) : -(lookback + 1)]
+        if len(prior_window) == 10:
+            prior_start_close = prior_window.iloc[0]["close"]
+            prior_end_close = prior_window.iloc[-1]["close"]
+            prior_run_pct = (prior_end_close - prior_start_close) / prior_start_close * 100
+            if prior_run_pct > max_prior_run:
                 logger.debug(
                     "Skipping %s because it already ran %.1f%% before the burst",
                     symbol,
-                    max_observed_prior_run,
+                    prior_run_pct,
                 )
                 continue
 

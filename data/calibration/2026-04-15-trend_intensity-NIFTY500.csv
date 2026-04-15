@@ -1,0 +1,10 @@
+scanner_name,universe,start_date,end_date,n_signals,avg_return_5d,avg_return_10d,avg_return_20d,win_rate_5d,win_rate_10d,win_rate_20d,max_atr_pct,min_days_above_ma50
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,6289,0.54,1.14,2.6,50.8,53.3,57.3,0.05,40
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,8642,0.58,1.11,2.51,50.8,52.9,57.0,0.05,30
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,10126,0.51,1.02,2.42,50.5,52.7,56.6,0.05,20
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,2843,0.02,0.3,1.38,49.0,52.2,55.7,0.03,40
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,4604,0.12,0.39,1.3,49.7,52.0,55.2,0.03,20
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,3900,0.15,0.38,1.3,50.1,52.0,55.3,0.03,30
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,909,-0.06,-0.01,0.8,49.4,50.7,53.2,0.02,20
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,772,-0.15,-0.13,0.6,49.4,50.5,52.2,0.02,30
+detect_trend_intensity,NIFTY500,2023-04-15,2026-04-15,535,-0.48,-0.47,0.03,46.5,50.3,50.7,0.02,40

@@ -2,7 +2,7 @@
 
 > Agents: update this file after every completed task. This is the project memory.
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-15
 **Current phase:** Phase 2 Operationalization + NSE Calibration Tooling
 **Active plan:** `implementation_plan.md` (at project root)
 
@@ -30,11 +30,17 @@
 - 2026-04-13 - Stream B: manual trade workflow implemented (`trade/log.py`, `trade_manager.py`, trade status/summary)
 - 2026-04-13 - Stream C: historical backfill + scanner calibration scaffolding implemented
 - 2026-04-13 - Stream C: 3-year NIFTY500 historical backfill completed (`342,283` OHLCV rows stored; `nselib` history primary, `yfinance` fallback retained)
+- 2026-04-14 - Stream C: Momentum Burst calibration completed for `NIFTY500`; report saved to `data/calibration/2026-04-14-momentum_burst-NIFTY500.csv`
+- 2026-04-15 - Stream C: Episodic Pivot calibration completed for `NIFTY500`; report saved to `data/calibration/2026-04-15-episodic_pivot-NIFTY500.csv`
+- 2026-04-15 - Stream C: Trend Intensity calibration completed for `NIFTY500`; report saved to `data/calibration/2026-04-15-trend_intensity-NIFTY500.csv`
+- 2026-04-15 - Scanner defaults updated from calibration review: `EP_MIN_GAP_VOLUME_RATIO=5.0`, `TI_MAX_ATR_PCT=0.05`, `TI_MIN_DAYS_ABOVE_MA50=40`
 
 ## In Progress
 
 - Running the briefing live each weekday to accumulate NSE breadth history
-- Running scanner calibration against the newly backfilled OHLCV base
+- Reviewing scanner calibration rankings and deciding whether to tune thresholds in `config.py`
+- Monitoring the calibrated scanner defaults in live daily briefings
+- 2026-04-15 monitoring checkpoint: reran `daily_briefing.py --date 2026-04-13` against the local DB after adopting calibrated EP/TI defaults; verdict was `DEFENSIVE` with `21` Momentum Burst, `4` Episodic Pivot, and `3` Trend Intensity candidates, and the saved top-10 watchlist remained Momentum Burst-heavy (`6` MB, `3` EP, `1` TI candidate was filtered out of the top list)
 
 ## Open Questions
 
@@ -44,11 +50,14 @@
 
 - [ ] **Calibration objective:** Backtesting currently optimizes for forward-return hit rate at `+5d`, `+10d`, and `+20d`. Benchmark-relative scoring versus NIFTY can be added later if raw signal quality is not enough.
 
+- [ ] **Intraday/opening alerts as a future phase:** User wants help reducing market-open FOMO and missed entries. Keep Phase 2 on the current EOD/manual workflow, but capture a future enhancement for "opening-plan" alerts first, and only consider true intraday signal generation after an explicit architecture decision because it would break ADR-004 (`EOD only`) and increase data/infrastructure complexity.
+
 ## Noted Issues
 
 - The active plan file remains at repository root instead of under `docs/plans/`.
 - `implementation_plan.md` is now the active multi-stream follow-on plan and should be kept aligned with this tracker.
 - Legacy OHLCV rows still exist for `TATAMOTORS`, while the current NSE constituent universe resolves that company as `TMCV`. Treat this as a symbol-alias cleanup follow-up, not a calibration blocker.
+- The current environment has no default `python`/`py` command on `PATH`; use `C:\Program Files\Python312\python.exe` for manual local runs from PowerShell unless the shell environment is updated.
 
 ## Deviations from Plan
 
@@ -62,11 +71,14 @@
 - `NIFTY750` is implemented as `NIFTY500 + MICROCAP250` because official NSE constituent data shows `SMALLCAP250` overlaps fully with `NIFTY500`.
 - `trade_manager.py` is an interactive CLI rather than a CSV-driven workflow.
 - `calibrate_thresholds.py` ranks parameter sets by 10-day forward win rate first, then average 10-day return and signal count.
+- `calibrate_thresholds.py` now preloads OHLCV history once per run to avoid repeated SQLite reads per parameter set, and prints per-parameter progress for long calibration jobs.
+- `detect_momentum_burst()` now evaluates the "already extended" rule over the immediate prior 10 trading days, matching the architecture/config intent rather than scanning the entire older history.
+- Adopted calibration changes so far keep Momentum Burst defaults unchanged, tighten EP volume confirmation, and relax Trend Intensity's ATR ceiling while requiring stronger MA50 persistence.
 
 ## Next Action
 
 1. Run `python scripts/daily_briefing.py` every weekday after `16:30 IST`.
 2. Use `python scripts/trade_manager.py` for manual paper/live trade logging and review.
-3. Run `python scripts/calibrate_thresholds.py --scanner momentum_burst --universe NIFTY500`.
-4. Review the calibration ranking, then tune scanner thresholds in `config.py` only if signal quality improves materially.
+3. Monitor live briefing/watchlist quality using the newly calibrated EP and Trend Intensity defaults before making any further threshold changes.
+4. If watchlist quality is acceptable, leave Momentum Burst at `5.0 / 1.5` and keep the adopted EP/TI calibration changes as the new baseline.
 5. After about 60 trading days of live breadth data have accumulated, review verdict history against subsequent NIFTY 500 returns and tune Market Monitor thresholds in `config.py`.
