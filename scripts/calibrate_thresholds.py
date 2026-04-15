@@ -13,6 +13,8 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
+from src.ingestion.store import get_ohlcv_range
+from src.ingestion.symbols import get_universe_symbols
 from src.review.backtest import build_parameter_grid, get_scanner, run_backtest
 
 
@@ -31,18 +33,28 @@ def main() -> int:
     scanner_fn = get_scanner(args.scanner)
     grid = build_parameter_grid(args.scanner)
     results = []
+    symbols = get_universe_symbols(args.universe)
+    end_with_horizon = (
+        pd.Timestamp(args.end_date) + pd.tseries.offsets.BDay(max(config.BACKTEST_FORWARD_DAYS))
+    ).date().isoformat()
+    price_history = get_ohlcv_range(args.start_date, end_with_horizon, symbols=symbols)
 
     print(
         f"Running calibration for {args.scanner} on {args.universe} "
         f"from {args.start_date} to {args.end_date} ({len(grid)} parameter sets)"
     )
-    for params in grid:
+    print(
+        f"Loaded {len(price_history):,} OHLCV rows for {len(symbols)} symbols through {end_with_horizon}"
+    )
+    for index, params in enumerate(grid, start=1):
+        print(f"[{index}/{len(grid)}] Testing params: {params}")
         result = run_backtest(
             scanner_fn=scanner_fn,
             universe=args.universe,
             start_date=args.start_date,
             end_date=args.end_date,
             params=params,
+            price_history=price_history,
         )
         results.append(result.to_dict())
 
