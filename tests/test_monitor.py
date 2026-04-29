@@ -59,6 +59,27 @@ def test_compute_breadth_offensive_when_majority_above_ma():
     assert metrics["pct_above_ma20"] > 55.0
 
 
+def test_compute_historical_breadth_matches_latest_single_day_result():
+    """Historical breadth helper should match the latest-row live breadth calculation."""
+    from src.monitor.breadth import compute_breadth, compute_historical_breadth
+
+    df = _make_ohlcv(100, 60, 0.65)
+
+    latest_metrics = compute_breadth(df)
+    historical = compute_historical_breadth(df)
+
+    assert not historical.empty
+    latest_row = historical.iloc[-1]
+    assert latest_row["date"].strftime("%Y-%m-%d") == latest_metrics["date"]
+    assert latest_row["pct_above_ma20"] == latest_metrics["pct_above_ma20"]
+    assert latest_row["pct_above_ma50"] == latest_metrics["pct_above_ma50"]
+    assert latest_row["new_highs_52w"] == latest_metrics["new_highs_52w"]
+    assert latest_row["new_lows_52w"] == latest_metrics["new_lows_52w"]
+    assert latest_row["up_volume_ratio"] == latest_metrics["up_volume_ratio"]
+    assert latest_row["advancing"] == latest_metrics["advancing"]
+    assert latest_row["declining"] == latest_metrics["declining"]
+
+
 def test_verdict_offensive():
     """compute_verdict should return OFFENSIVE for strong breadth."""
     from src.monitor.verdict import compute_verdict

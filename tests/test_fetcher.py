@@ -4,6 +4,7 @@ import pandas as pd
 import src.ingestion.fetcher as fetcher
 
 from src.ingestion.fetcher import (
+    fetch_benchmark_history,
     normalize_nselib_bhavcopy,
     normalize_nselib_history,
     parse_bhavcopy_rows,
@@ -293,3 +294,56 @@ def test_fetch_via_yfinance_batch_extracts_row():
     assert "TCS" in symbols_found
     assert results[0]["close"] == 105.0
     assert results[0]["date"] == target_date
+
+
+def test_fetch_benchmark_history_normalizes_index_rows(monkeypatch):
+    """fetch_benchmark_history should normalize a benchmark yfinance series into OHLCV rows."""
+    raw = pd.DataFrame(
+        {
+            "Open": [22000.0, 22100.0],
+            "High": [22150.0, 22220.0],
+            "Low": [21950.0, 22010.0],
+            "Close": [22100.0, 22180.0],
+            "Volume": [0, 0],
+        },
+        index=pd.DatetimeIndex(["2025-04-10", "2025-04-11"]),
+    )
+
+    monkeypatch.setattr(fetcher.yf, "download", lambda *args, **kwargs: raw)
+
+    result = fetch_benchmark_history("^NSEI", "2025-04-10", "2025-04-11")
+
+    assert len(result) == 2
+    assert result[0]["symbol"] == "^NSEI"
+    assert result[0]["date"] == "2025-04-10"
+    assert result[1]["close"] == 22180.0
+
+
+def test_fetch_benchmark_history_falls_back_to_proxy_ticker(monkeypatch):
+    """fetch_benchmark_history should try fallback source tickers if the first source is empty."""
+    raw = pd.DataFrame(
+        {
+            "Open": [22000.0],
+            "High": [22150.0],
+            "Low": [21950.0],
+            "Close": [22100.0],
+            "Volume": [0],
+        },
+        index=pd.DatetimeIndex(["2025-04-10"]),
+    )
+
+    calls = []
+
+    def fake_download(*args, **kwargs):
+        calls.append(kwargs["tickers"])
+        if kwargs["tickers"] == "^NSEI":
+            return pd.DataFrame()
+        return raw
+
+    monkeypatch.setattr(fetcher.yf, "download", fake_download)
+
+    result = fetch_benchmark_history("^NSEI", "2025-04-10", "2025-04-10")
+
+    assert calls[:2] == ["^NSEI", "NIFTYBEES.NS"]
+    assert len(result) == 1
+    assert result[0]["symbol"] == "^NSEI"

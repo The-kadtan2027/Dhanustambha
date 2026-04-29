@@ -306,6 +306,30 @@ def get_breadth(date: Optional[str] = None) -> Dict[str, object]:
         conn.close()
 
 
+def get_breadth_range(start_date: str, end_date: str) -> pd.DataFrame:
+    """Return breadth rows between two dates inclusive as a date-sorted DataFrame."""
+    conn = get_connection()
+    try:
+        df = pd.read_sql(
+            """
+            SELECT *
+            FROM breadth
+            WHERE date >= ? AND date <= ?
+            ORDER BY date
+            """,
+            conn,
+            params=(start_date, end_date),
+        )
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to fetch breadth range %s to %s: %s", start_date, end_date, exc)
+        raise
+    finally:
+        conn.close()
+
+
 def save_watchlist(entries: List[Dict]) -> None:
     """Insert watchlist entries for a single scan day."""
     if not entries:

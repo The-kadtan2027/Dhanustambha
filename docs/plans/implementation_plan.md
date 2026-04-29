@@ -1,7 +1,8 @@
-# Implementation Plan — Universe Expansion + Phase 2 + Backtesting
+# Implementation Plan — Operationalization + Research-Grade Backtesting
 
-Covers three sequential work streams. Each stream builds on the previous one.
-Phase 1 is already fully implemented and validated.
+Covers the completed implementation streams plus the next research-driven calibration
+stream. Phase 1 is already fully implemented and validated, and the current focus is
+improving the quality of scanner research before making further default-threshold changes.
 
 ---
 
@@ -211,11 +212,13 @@ After that, [daily_briefing.py](file:///d:/antigravity/Dhanustambha/tests/test_d
 - Outputs a ranked table of parameter sets by 10-day win rate (forward returns)
 - Saves result to `data/calibration/YYYY-MM-DD-results.csv`
 
-#### [NEW] `src/review/market_regime.py`
+#### [DEFERRED] `src/review/market_regime.py`
 - `classify_nifty_regime(date) → str`
   - Uses NIFTY 50 index OHLCV (fetched as `^NSEI` on yfinance) to label each day
     as BULL (NIFTY above 200d MA), BEAR, or SIDEWAYS
   - Allows backtests to be filtered by market regime — crucial for NSE calibration
+  - Deferred for now while calibration remains focused on raw forward-return signal quality.
+    Revisit only if benchmark-relative or regime-specific analysis becomes necessary.
 
 #### [NEW] `tests/test_backtest.py`
 - `test_backtest_runs_on_synthetic_data()` — inject 200 days of synthetic OHLCV for 50 symbols,
@@ -291,3 +294,257 @@ python scripts/calibrate_thresholds.py --scanner momentum_burst --universe NIFTY
 
 4. **Backtest benchmark:** When evaluating scanner quality, should we compare signal returns
    against NIFTY 500 buy-and-hold as the benchmark? Or raw % correct (close above entry at +Nd)?
+
+---
+
+## Stream D — Research-Grade Calibration and Methodology Alignment (~3-5 sessions)
+
+### Context
+
+The current calibration engine already measures raw forward returns for Momentum Burst,
+Episodic Pivot, and Trend Intensity. That is enough for first-pass tuning, but it is not
+yet rich enough to answer the methodology questions raised by Stockbee, Qullamaggie, and
+Minervini-style trend/risk rules:
+
+- Are signals outperforming the market, or just rising with a strong tape?
+- Which setups work best in `OFFENSIVE` vs `DEFENSIVE` breadth conditions?
+- Which setup characteristics actually improve follow-through in NSE names?
+- How quickly do failed short-swing setups reveal themselves?
+
+This stream upgrades the calibration flow into a research engine while keeping Phase 2
+execution EOD/manual and without introducing intraday order logic.
+
+### Design philosophy
+
+> [!IMPORTANT]
+> **We are still not building a general-purpose portfolio backtester.**
+> The goal is to make our scanner calibration evidence-based by adding richer signal data,
+> benchmark-relative scoring, regime/context analysis, and scanner-specific quality features.
+
+The upgraded research stack must:
+
+- Keep live scanner behavior stable until research validates a better default
+- Separate **signal detection** from **trade simulation**
+- Rank parameter sets by **alpha and robustness**, not only raw win rate
+- Preserve EOD-first architecture and avoid breaking ADR-004 (`EOD only`)
+
+### Scope
+
+#### Task D1 — Upgrade signal-level backtest output
+
+Enhance [src/review/backtest.py](file:///d:/antigravity/Dhanustambha/src/review/backtest.py)
+so every historical signal row includes:
+
+- Core metadata: `date`, `symbol`, `setup_type`, `entry_close`, `score`, `scanner_name`, `param_set_id`
+- Forward returns: `return_1d`, `return_3d`, `return_5d`, `return_10d`, `return_20d`
+- Excursion metrics: `mfe_3d`, `mfe_5d`, `mfe_10d`, `mae_3d`, `mae_5d`, `mae_10d`
+- Failure-speed metrics: `failed_to_gain_by_3d`, `failed_to_gain_by_5d`
+- Target-hit metrics: `hit_2pct_by_3d`, `hit_5pct_by_5d`, `hit_8pct_by_10d`
+
+Summary output per parameter set should also include:
+
+- `n_signals`
+- average + median forward returns
+- win rates by horizon
+- average MAE/MFE
+- failure-speed percentages
+
+#### Task D2 — Add benchmark-relative scoring versus NIFTY
+
+Extend the backtest layer so each signal also records:
+
+- `nifty_return_1d`, `nifty_return_3d`, `nifty_return_5d`, `nifty_return_10d`, `nifty_return_20d`
+- `alpha_1d`, `alpha_3d`, `alpha_5d`, `alpha_10d`, `alpha_20d`
+
+Add summary metrics:
+
+- `avg_alpha_3d/5d/10d/20d`
+- `median_alpha_3d/5d/10d/20d`
+- `alpha_win_rate_3d/5d/10d/20d`
+
+The benchmark can initially be any locally available NIFTY proxy series already supported
+by the historical data backend. If benchmark data is missing for a given date/horizon,
+alpha fields should remain null rather than aborting the run.
+
+#### Task D3 — Add regime/context joins from breadth history
+
+Attach breadth context to each signal date using the stored `breadth` table:
+
+- `market_verdict`
+- `pct_above_ma20_on_day`
+- `pct_above_ma50_on_day`
+- `new_highs_52w_on_day`
+- `new_lows_52w_on_day`
+- `up_volume_ratio_on_day`
+- `advancing_on_day`
+- `declining_on_day`
+
+Add regime split summaries for each parameter set:
+
+- signal counts by verdict
+- `offensive_win_rate_5d`, `defensive_win_rate_5d`, `avoid_win_rate_5d`
+- `offensive_avg_alpha_5d`, `defensive_avg_alpha_5d`
+
+This is intentionally lighter than the deferred `market_regime.py` concept and uses the
+project's existing market monitor definitions first.
+
+#### Task D4 — Add scanner-specific research features
+
+Add research columns to scanner output without making them mandatory live filters yet.
+
+Momentum Burst:
+
+- `close_location_pct`
+- `range_expansion_ratio`
+- `nr_count_10d`
+- `consolidation_days`
+- `prior_10d_run_pct`
+- `prior_20d_run_pct`
+- `distance_from_20d_high_pct`
+- `trend_linearity_20d`
+
+Episodic Pivot:
+
+- `days_since_gap`
+- `gap_pct`
+- `gap_vol_ratio`
+- `gap_day_close_location_pct`
+- `gap_day_close_vs_open_pct`
+- `prior_65d_run_pct`
+- `prior_65d_weakness_pct`
+- `distance_to_52w_high_before_gap`
+- `holding_above_gap_open_days`
+- `gap_fill_pct`
+- `is_first_gap_in_6m`
+
+Trend Intensity:
+
+- `distance_above_ma50_pct`
+- `distance_above_ma150_pct`
+- `distance_above_ma200_pct`
+- `ma150_above_ma200`
+- `ma200_rising_20d`
+- `within_25pct_of_52w_high`
+- `relative_strength_vs_benchmark_3m`
+- `trend_efficiency_ratio`
+- `pullback_depth_20d`
+- `vol_dryup_ratio_10d`
+
+These are for research and bucketing first. Any future live-filter adoption must be
+justified by calibration evidence.
+
+#### Task D5 — Redesign calibration outputs and ranking
+
+Update [scripts/calibrate_thresholds.py](file:///d:/antigravity/Dhanustambha/scripts/calibrate_thresholds.py)
+to produce two outputs per run:
+
+- `data/calibration/YYYY-MM-DD-{scanner}-{universe}-summary.csv`
+- `data/calibration/YYYY-MM-DD-{scanner}-{universe}-signals.csv`
+
+Change ranking to prioritize:
+
+1. `median_alpha_5d` descending
+2. `win_rate_5d` descending
+3. `pct_hit_5pct_by_5d` descending
+4. `avg_mae_5d` ascending
+5. `n_signals` descending
+
+For EP review, also inspect `median_alpha_10d` and `median_alpha_20d` before changing
+defaults because catalyst follow-through may be slower than pure momentum bursts.
+
+#### Task D6 — Expand parameter grids only after metric upgrade
+
+Do not widen the search space until Tasks D1-D5 are complete and verified. After that,
+expand the grids conservatively:
+
+Momentum Burst:
+
+- `min_pct`: `4.0, 5.0, 6.0, 7.0, 8.0`
+- `min_vol_ratio`: `1.3, 1.5, 1.8, 2.0, 2.5`
+- `max_prior_run`: `8.0, 10.0, 12.0, 15.0`
+
+Episodic Pivot:
+
+- `min_gap_pct`: `4.0, 5.0, 6.0, 8.0`
+- `min_gap_vol_ratio`: `3.0, 4.0, 5.0, 6.0`
+- `max_days_since_gap`: `1, 2, 3, 5`
+
+Trend Intensity:
+
+- `max_atr_pct`: `0.02, 0.03, 0.04, 0.05`
+- `min_days_above_ma50`: `30, 35, 40, 45`
+- `min_vol_ratio`: `1.2, 1.3, 1.5`
+
+### Files changed
+
+#### [MODIFY] [src/review/backtest.py](file:///d:/antigravity/Dhanustambha/src/review/backtest.py)
+
+- Expand `BacktestResult` summary metrics
+- Add benchmark-relative return support
+- Add MAE/MFE calculation helpers
+- Add market breadth context joins
+- Add parameter-set identifiers and richer signal output
+
+#### [MODIFY] [scripts/calibrate_thresholds.py](file:///d:/antigravity/Dhanustambha/scripts/calibrate_thresholds.py)
+
+- Save both summary and signal-level calibration reports
+- Rank parameter sets by alpha-aware, robustness-aware metrics
+- Print clearer run summaries and ranking criteria
+
+#### [MODIFY] [src/scanner/momentum_burst.py](file:///d:/antigravity/Dhanustambha/src/scanner/momentum_burst.py)
+
+- Return research-oriented structure/quality fields alongside existing live fields
+
+#### [MODIFY] [src/scanner/episodic_pivot.py](file:///d:/antigravity/Dhanustambha/src/scanner/episodic_pivot.py)
+
+- Return freshness/gap-quality research fields alongside existing live fields
+
+#### [MODIFY] [src/scanner/trend_intensity.py](file:///d:/antigravity/Dhanustambha/src/scanner/trend_intensity.py)
+
+- Return smoothness/trend-template research fields alongside existing live fields
+
+#### [OPTIONAL NEW] `src/review/reporting.py`
+
+- Helper functions for per-regime summaries and bucket analysis if `backtest.py` grows too large
+
+#### [MODIFY] `tests/test_backtest.py`
+
+- Add assertions for benchmark-relative metrics, excursion metrics, and signal-level output shape
+
+#### [MODIFY] `tests/test_scanner.py`
+
+- Add targeted tests for new scanner feature columns using deterministic synthetic data
+
+### Sequencing
+
+```
+Week 1:  Stream D1-D2 — richer backtest rows + benchmark-relative returns
+Week 2:  Stream D3 — breadth/regime joins + alpha-aware summaries
+Week 3:  Stream D4 — scanner research features
+Week 4:  Stream D5-D6 — calibration output redesign + wider parameter grids
+Week 5:  Review results and only then consider config default changes
+```
+
+### Verification Plan
+
+```bash
+# Unit tests
+pytest tests/test_backtest.py -v
+pytest tests/test_scanner.py -v
+
+# Calibration smoke test with detailed outputs
+python scripts/calibrate_thresholds.py --scanner momentum_burst --universe NIFTY500
+
+# Inspect new outputs
+dir data/calibration
+```
+
+### Expected Outcomes
+
+At the end of Stream D, the repo should be able to answer:
+
+- Which setup has the best alpha versus NIFTY in Indian markets?
+- Which setups degrade meaningfully in `DEFENSIVE` breadth?
+- Which structure/freshness features improve follow-through?
+- Which setups fail fast enough to justify tight time stops?
+- Whether further `config.py` changes are supported by evidence rather than raw hit-rate alone

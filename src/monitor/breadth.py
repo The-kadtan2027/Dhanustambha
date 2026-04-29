@@ -9,77 +9,129 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def compute_historical_breadth(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute breadth metrics for every eligible trading day in the OHLCV history."""
+    if df.empty:
+        logger.error("Empty DataFrame passed to compute_historical_breadth")
+        return pd.DataFrame(
+            columns=[
+                "date",
+                "pct_above_ma20",
+                "pct_above_ma50",
+                "new_highs_52w",
+                "new_lows_52w",
+                "up_volume_ratio",
+                "advancing",
+                "declining",
+            ]
+        )
+
+    working = df.copy()
+    working["date"] = pd.to_datetime(working["date"])
+    working = working.sort_values(["symbol", "date"]).reset_index(drop=True)
+    working["row_number"] = working.groupby("symbol").cumcount() + 1
+    working = working[working["row_number"] >= 21].copy()
+    if working.empty:
+        logger.warning(
+            "No eligible history in compute_historical_breadth due to insufficient lookback"
+        )
+        return pd.DataFrame(
+            columns=[
+                "date",
+                "pct_above_ma20",
+                "pct_above_ma50",
+                "new_highs_52w",
+                "new_lows_52w",
+                "up_volume_ratio",
+                "advancing",
+                "declining",
+            ]
+        )
+
+    close_by_symbol = working.groupby("symbol")["close"]
+    high_by_symbol = working.groupby("symbol")["high"]
+    low_by_symbol = working.groupby("symbol")["low"]
+    working["ma20"] = close_by_symbol.transform(lambda values: values.rolling(20).mean())
+    working["ma50"] = close_by_symbol.transform(lambda values: values.rolling(50).mean())
+    working["high_52w"] = high_by_symbol.transform(
+        lambda values: values.rolling(252, min_periods=1).max()
+    )
+    working["low_52w"] = low_by_symbol.transform(
+        lambda values: values.rolling(252, min_periods=1).min()
+    )
+    working["prev_close"] = close_by_symbol.shift(1).fillna(working["close"])
+    working["above_ma20"] = (
+        (~working["ma20"].isna()) & (working["close"] > working["ma20"])
+    ).astype(int)
+    working["above_ma50"] = (
+        (~working["ma50"].isna()) & (working["close"] > working["ma50"])
+    ).astype(int)
+    working["new_52w_high"] = (
+        (~working["high_52w"].isna()) & (working["high"] >= working["high_52w"])
+    ).astype(int)
+    working["new_52w_low"] = (
+        (~working["low_52w"].isna()) & (working["low"] <= working["low_52w"])
+    ).astype(int)
+    working["up_volume"] = working["volume"].where(
+        working["close"] >= working["prev_close"],
+        0,
+    )
+    working["advancing_flag"] = (working["close"] > working["prev_close"]).astype(int)
+    working["declining_flag"] = (working["close"] < working["prev_close"]).astype(int)
+
+    grouped = (
+        working.groupby("date", as_index=False)
+        .agg(
+            total_symbols=("symbol", "count"),
+            above_ma20=("above_ma20", "sum"),
+            above_ma50=("above_ma50", "sum"),
+            new_highs_52w=("new_52w_high", "sum"),
+            new_lows_52w=("new_52w_low", "sum"),
+            up_volume=("up_volume", "sum"),
+            total_volume=("volume", "sum"),
+            advancing=("advancing_flag", "sum"),
+            declining=("declining_flag", "sum"),
+        )
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+    grouped["pct_above_ma20"] = round(grouped["above_ma20"] / grouped["total_symbols"] * 100, 2)
+    grouped["pct_above_ma50"] = round(grouped["above_ma50"] / grouped["total_symbols"] * 100, 2)
+    grouped["up_volume_ratio"] = (
+        grouped["up_volume"] / grouped["total_volume"]
+    ).fillna(0.0).round(4)
+    return grouped[
+        [
+            "date",
+            "pct_above_ma20",
+            "pct_above_ma50",
+            "new_highs_52w",
+            "new_lows_52w",
+            "up_volume_ratio",
+            "advancing",
+            "declining",
+        ]
+    ]
+
+
 def compute_breadth(df: pd.DataFrame) -> Dict:
     """Compute breadth metrics from a multi-symbol OHLCV DataFrame."""
     if df.empty:
         logger.error("Empty DataFrame passed to compute_breadth")
         return {}
 
-    working = df.copy()
-    working["date"] = pd.to_datetime(working["date"])
-    latest_date = working["date"].max()
-
-    results = []
-    for symbol, group in working.groupby("symbol"):
-        ordered = group.sort_values("date").reset_index(drop=True)
-        if len(ordered) < 21:
-            continue
-
-        ordered["ma20"] = ordered["close"].rolling(20).mean()
-        ordered["ma50"] = (
-            ordered["close"].rolling(50).mean() if len(ordered) >= 51 else float("nan")
-        )
-        ordered["high_52w"] = ordered["high"].rolling(min(252, len(ordered))).max()
-        ordered["low_52w"] = ordered["low"].rolling(min(252, len(ordered))).min()
-
-        today = ordered[ordered["date"] == latest_date]
-        if today.empty:
-            continue
-
-        row = today.iloc[0]
-        previous_rows = ordered[ordered["date"] < latest_date]
-        previous = previous_rows.iloc[-1] if not previous_rows.empty else None
-
-        results.append(
-            {
-                "symbol": symbol,
-                "close": row["close"],
-                "prev_close": previous["close"] if previous is not None else row["close"],
-                "volume": row["volume"],
-                "above_ma20": int(
-                    not pd.isna(row["ma20"]) and row["close"] > row["ma20"]
-                ),
-                "above_ma50": int(
-                    not pd.isna(row["ma50"]) and row["close"] > row["ma50"]
-                ),
-                "new_52w_high": int(
-                    not pd.isna(row["high_52w"]) and row["high"] >= row["high_52w"]
-                ),
-                "new_52w_low": int(
-                    not pd.isna(row["low_52w"]) and row["low"] <= row["low_52w"]
-                ),
-            }
-        )
-
-    if not results:
+    historical = compute_historical_breadth(df)
+    if historical.empty:
         logger.warning("No results computed in compute_breadth due to insufficient data")
         return {}
-
-    result_df = pd.DataFrame(results)
-    total = len(result_df)
-    advancing = int((result_df["close"] > result_df["prev_close"]).sum())
-    declining = int((result_df["close"] < result_df["prev_close"]).sum())
-    up_volume = result_df.loc[result_df["close"] >= result_df["prev_close"], "volume"].sum()
-    total_volume = result_df["volume"].sum()
-    up_volume_ratio = round(up_volume / total_volume, 4) if total_volume > 0 else 0.0
-
+    latest_row = historical.iloc[-1]
     return {
-        "date": latest_date.strftime("%Y-%m-%d"),
-        "pct_above_ma20": round(result_df["above_ma20"].sum() / total * 100, 2),
-        "pct_above_ma50": round(result_df["above_ma50"].sum() / total * 100, 2),
-        "new_highs_52w": int(result_df["new_52w_high"].sum()),
-        "new_lows_52w": int(result_df["new_52w_low"].sum()),
-        "up_volume_ratio": up_volume_ratio,
-        "advancing": advancing,
-        "declining": declining,
+        "date": latest_row["date"].strftime("%Y-%m-%d"),
+        "pct_above_ma20": float(latest_row["pct_above_ma20"]),
+        "pct_above_ma50": float(latest_row["pct_above_ma50"]),
+        "new_highs_52w": int(latest_row["new_highs_52w"]),
+        "new_lows_52w": int(latest_row["new_lows_52w"]),
+        "up_volume_ratio": float(latest_row["up_volume_ratio"]),
+        "advancing": int(latest_row["advancing"]),
+        "declining": int(latest_row["declining"]),
     }

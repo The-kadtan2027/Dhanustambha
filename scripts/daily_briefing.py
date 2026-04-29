@@ -68,7 +68,54 @@ def is_eod_data_expected(
         time(hour=pull_hour, minute=pull_minute),
         tzinfo=IST,
     )
-    return current_time >= pull_time
+    availability_time = pull_time + pd.Timedelta(minutes=config.DATA_PULL_GRACE_MINUTES)
+    return current_time >= availability_time
+
+
+def _print_setup_table(title: str, candidates: pd.DataFrame) -> None:
+    """Print one setup-specific candidate section with quality/tier labels."""
+    print(f"\n  {'-' * 45}")
+    print(f"  {title} ({len(candidates)})")
+    print(f"  {'-' * 45}")
+
+    if candidates.empty:
+        print("  No candidates.")
+        return
+
+    # Determine the tier/quality column and sort high-quality first
+    tier_col = None
+    high_values = set()
+    if "ep_tier" in candidates.columns:
+        tier_col = "ep_tier"
+        high_values = {"A+"}
+    elif "mb_quality" in candidates.columns:
+        tier_col = "mb_quality"
+        high_values = {"HIGH"}
+
+    if tier_col:
+        candidates = candidates.copy()
+        candidates["_tier_sort"] = candidates[tier_col].apply(
+            lambda v: 0 if v in high_values else 1
+        )
+        candidates = candidates.sort_values(
+            ["_tier_sort", "score"], ascending=[True, False]
+        )
+
+    print(
+        f"  {'':3s}{'SYMBOL':<12} {'MATCHED_SETUPS':<36} "
+        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8}"
+    )
+    print(f"  {'-' * 82}")
+    for _, row in candidates.iterrows():
+        matched_setups = row.get("matched_setups", row.get("setup_type", ""))
+        tier_label = ""
+        if tier_col and row.get(tier_col) in high_values:
+            tier_label = "* "
+        print(
+            f"  {tier_label:3s}{row['symbol']:<12} {matched_setups:<36} "
+            f"{row['pct_change']:>+6.1f}% {row['volume_ratio']:>9.1f}x "
+            f"{row['close']:>8.2f}"
+        )
 
 
 def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] = None) -> None:
@@ -121,7 +168,8 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
         if not target_date_expected:
             print(
                 f"      Waiting for NSE EOD data for {fetch_date}; "
-                f"rerun after {config.DATA_PULL_TIME} IST"
+                f"rerun after {config.DATA_PULL_TIME} IST + "
+                f"{config.DATA_PULL_GRACE_MINUTES}m grace"
             )
             return
         if missing_dates:
@@ -182,14 +230,29 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
     print(f"\n  {'-' * 45}")
     print(f"  TOP CANDIDATES ({len(watchlist)})")
     print(f"  {'-' * 45}")
-    print(f"  {'SYMBOL':<12} {'SETUP':<18} {'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8}")
-    print(f"  {'-' * 55}")
+    print(
+        f"  {'':3s}{'SYMBOL':<12} {'SETUP':<18} {'MATCHED_SETUPS':<36} "
+        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8}"
+    )
+    print(f"  {'-' * 101}")
     for _, row in watchlist.iterrows():
+        matched_setups = row.get("matched_setups", row["setup_type"])
+        # Show quality/tier marker for high-conviction candidates
+        tier_label = ""
+        if row.get("ep_tier") == "A+":
+            tier_label = "* "
+        elif row.get("mb_quality") == "HIGH":
+            tier_label = "* "
         print(
-            f"  {row['symbol']:<12} {row['setup_type']:<18} "
+            f"  {tier_label:3s}{row['symbol']:<12} {row['setup_type']:<18} "
+            f"{matched_setups:<36} "
             f"{row['pct_change']:>+6.1f}% {row['volume_ratio']:>9.1f}x "
             f"{row['close']:>8.2f}"
         )
+
+    _print_setup_table("TOP MOMENTUM BURST", mb_results)
+    _print_setup_table("TOP EPISODIC PIVOT", ep_results)
+    _print_setup_table("TOP TREND INTENSITY", ti_results)
 
     print(f"\n  Watchlist saved -> {csv_path}")
     print(f"{'=' * 55}\n")

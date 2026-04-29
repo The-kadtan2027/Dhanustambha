@@ -109,3 +109,121 @@ def test_prior_run_filter_only_checks_the_prior_10_days():
 
     assert len(result) == 1
     assert result.iloc[0]["symbol"] == "TEST"
+
+
+def test_momentum_burst_exposes_research_feature_columns():
+    """Momentum Burst results should include non-blocking research fields."""
+    from src.scanner.momentum_burst import detect_momentum_burst
+
+    closes = [100.0] * 25 + [108.0]
+    volumes = [200_000] * 25 + [600_000]
+    df = _make_symbol_df(closes, volumes)
+
+    result = detect_momentum_burst(df)
+    row = result.iloc[0]
+
+    assert "close_location_pct" in result.columns
+    assert "range_expansion_ratio" in result.columns
+    assert "nr_count_10d" in result.columns
+    assert "consolidation_days" in result.columns
+    assert "prior_10d_run_pct" in result.columns
+    assert "prior_20d_run_pct" in result.columns
+    assert "distance_from_20d_high_pct" in result.columns
+    assert "trend_linearity_20d" in result.columns
+    assert 0.0 <= row["close_location_pct"] <= 100.0
+    assert row["range_expansion_ratio"] > 0.0
+
+
+def test_prepared_momentum_features_preserve_detection_result():
+    """Prepared-history path should preserve Momentum Burst detection semantics."""
+    from src.scanner.momentum_burst import (
+        detect_momentum_burst,
+        prepare_momentum_burst_features,
+    )
+
+    closes = [100.0] * 25 + [108.0]
+    volumes = [200_000] * 25 + [600_000]
+    df = _make_symbol_df(closes, volumes)
+
+    direct_result = detect_momentum_burst(df)
+    prepared = prepare_momentum_burst_features(df)
+    prepared_result = detect_momentum_burst(prepared[prepared["date"] == prepared["date"].max()])
+
+    assert len(direct_result) == 1
+    assert len(prepared_result) == 1
+    assert direct_result.iloc[0]["symbol"] == prepared_result.iloc[0]["symbol"]
+    assert direct_result.iloc[0]["pct_change"] == prepared_result.iloc[0]["pct_change"]
+    assert direct_result.iloc[0]["volume_ratio"] == prepared_result.iloc[0]["volume_ratio"]
+
+
+def test_mb_quality_high_classification():
+    """An MB candidate from a tight base, strong close, new 20d high → HIGH quality."""
+    from src.scanner.momentum_burst import detect_momentum_burst
+
+    # 25 days of tight consolidation (NR days = high), then a breakout to new 20d high
+    # Use very tight range to maximize NR count
+    closes = [100.0] * 25 + [108.0]
+    # Construct OHLCV with very narrow ranges for the first 25 days (-> NR count will be high)
+    count = len(closes)
+    dates = pd.date_range("2025-01-01", periods=count, freq="B")
+    df = pd.DataFrame({
+        "symbol": "TIGHT",
+        "date": dates,
+        # Tight ranges for consolidation phase; wide range on burst day with close near high
+        "open": [100.0] * 25 + [103.0],
+        "high": [100.1] * 25 + [108.5],
+        "low": [99.9] * 25 + [102.5],
+        "close": closes,
+        "volume": [200_000] * 25 + [600_000],
+    })
+
+    result = detect_momentum_burst(df)
+
+    assert len(result) == 1
+    assert "mb_quality" in result.columns
+    row = result.iloc[0]
+    assert row["mb_quality"] == "HIGH"
+    # Verify the underlying features that drove the classification
+    assert row["nr_count_10d"] >= 6
+    assert row["close_location_pct"] >= 70.0
+    assert row["distance_from_20d_high_pct"] >= 0.0
+
+
+def test_mb_quality_standard_classification():
+    """An MB candidate without a tight base → STANDARD quality."""
+    from src.scanner.momentum_burst import detect_momentum_burst
+
+    # Varied (non-tight) price action before a burst — NR count will be low
+    closes = list(range(95, 120)) + [130.0]
+    count = len(closes)
+    dates = pd.date_range("2025-01-01", periods=count, freq="B")
+    df = pd.DataFrame({
+        "symbol": "WILD",
+        "date": dates,
+        "open": [c * 0.97 for c in closes],
+        "high": [c * 1.03 for c in closes],
+        "low": [c * 0.96 for c in closes],
+        "close": [float(c) for c in closes],
+        "volume": [200_000] * (count - 1) + [600_000],
+    })
+
+    result = detect_momentum_burst(df)
+
+    # May or may not detect a burst depending on thresholds, but if detected,
+    # the noisy prior action should yield STANDARD quality
+    if len(result) > 0:
+        assert "mb_quality" in result.columns
+        assert result.iloc[0]["mb_quality"] == "STANDARD"
+
+
+def test_mb_quality_column_always_present():
+    """The mb_quality column should exist even when no candidates are found."""
+    from src.scanner.momentum_burst import detect_momentum_burst
+
+    closes = [100.0] * 26
+    volumes = [200_000] * 26
+    df = _make_symbol_df(closes, volumes)
+
+    result = detect_momentum_burst(df)
+
+    assert "mb_quality" in result.columns

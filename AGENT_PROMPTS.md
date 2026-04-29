@@ -28,6 +28,7 @@ After reading these files, tell me:
 Then ask me: "Ready to proceed with [next task name]?"
 
 Do NOT write any code until I confirm.
+While checking the docs and design if you find any improvements can be done please suggest those.
 ```
 
 ---
@@ -95,3 +96,7 @@ After approval:
 - Update docs/plans/PROGRESS.md when done
 - If you make an architectural decision not covered by existing ADRs, add a new ADR to docs/architecture/DECISIONS.md
 ```
+
+
+git remote add origin https://github.com/The-kadtan2027/Dhanustambha.git
+https://github.com/The-kadtan2027/

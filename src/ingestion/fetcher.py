@@ -373,6 +373,99 @@ def fetch_historical_data(
     return nselib_rows + fallback_rows
 
 
+def fetch_benchmark_history(
+    benchmark_symbol: str,
+    start_date: str,
+    end_date: str,
+    source_ticker: Optional[str] = None,
+) -> List[Dict]:
+    """Fetch benchmark OHLCV history via yfinance and normalize it for local storage.
+
+    Benchmarks like `^NSEI` are not NSE equities and therefore do not flow through the
+    standard nselib equity history path. We store them in the same OHLCV table using the
+    configured benchmark symbol so backtests can compute benchmark-relative alpha.
+    """
+    if source_ticker is not None:
+        tickers_to_try = (source_ticker,)
+    else:
+        tickers_to_try = config.BACKTEST_BENCHMARK_SOURCE_TICKERS
+
+    end_exclusive = (pd.Timestamp(end_date).date() + timedelta(days=1)).isoformat()
+    start_inclusive = pd.Timestamp(start_date).date().isoformat()
+
+    for ticker in tickers_to_try:
+        try:
+            history = yf.download(
+                tickers=ticker,
+                start=start_inclusive,
+                end=end_exclusive,
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Benchmark history fetch failed for %s via %s: %s",
+                benchmark_symbol,
+                ticker,
+                exc,
+            )
+            continue
+
+        if history.empty:
+            logger.warning(
+                "Benchmark history returned empty data for %s via %s",
+                benchmark_symbol,
+                ticker,
+            )
+            continue
+
+        if isinstance(history.columns, pd.MultiIndex):
+            try:
+                history = history.xs(ticker, axis=1, level=1)
+            except (KeyError, ValueError):
+                history = history.droplevel(-1, axis=1)
+
+        history = history.dropna(subset=["Close"]).copy()
+        if history.empty:
+            logger.warning(
+                "Benchmark history had no usable close rows for %s via %s",
+                benchmark_symbol,
+                ticker,
+            )
+            continue
+
+        rows: List[Dict] = []
+        for timestamp, row in history.iterrows():
+            volume = row["Volume"] if "Volume" in row and not pd.isna(row["Volume"]) else 0
+            rows.append(
+                {
+                    "symbol": benchmark_symbol,
+                    "date": pd.Timestamp(timestamp).date().isoformat(),
+                    "open": round(float(row["Open"]), 2),
+                    "high": round(float(row["High"]), 2),
+                    "low": round(float(row["Low"]), 2),
+                    "close": round(float(row["Close"]), 2),
+                    "volume": int(volume),
+                }
+            )
+
+        logger.info(
+            "Fetched %d benchmark rows for %s via yfinance ticker %s",
+            len(rows),
+            benchmark_symbol,
+            ticker,
+        )
+        return rows
+
+    logger.error(
+        "Benchmark history fetch failed for %s via all configured source tickers: %s",
+        benchmark_symbol,
+        ", ".join(tickers_to_try),
+    )
+    return []
+
+
 def fetch_via_yfinance(symbols: List[str], fetch_date: str) -> List[Dict]:
     """Fetch EOD OHLCV data for symbols via yfinance (serial, one Ticker per symbol).
 
