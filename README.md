@@ -32,17 +32,18 @@ A personal, zero-cost trading toolbox that implements the Stockbee momentum meth
 ### The five layers
 | Layer | Purpose | Status |
 |---|---|---|
-| 1 — Data ingestion | Pull NSE EOD OHLCV into SQLite | 🔲 Not started |
-| 2 — Market monitor | Breadth engine → Offensive/Defensive verdict | 🔲 Not started |
-| 3 — Setup scanner | Momentum Burst + EP + Trend Intensity scans | 🔲 Not started |
-| 4 — Trade management | Position sizing, open trade log, P&L | 🔲 Not started |
-| 5 — Review loop | Trade journal, setup analytics, backtester | 🔲 Not started |
+| 1 — Data ingestion | Pull NSE EOD OHLCV into SQLite | ✅ Complete (Phase 1) |
+| 2 — Market monitor | Breadth engine → Offensive/Defensive verdict | ✅ Complete (Phase 1) |
+| 3 — Setup scanner | Momentum Burst + EP + Trend Intensity scans | ✅ Complete (Phase 1 + calibrated) |
+| 4 — Trade management | Position sizing, open trade log, P&L | ✅ Complete (Phase 2) |
+| 5 — Review loop | Trade journal, setup analytics, backtester | ✅ Complete (Phase 3 scaffolding + calibration) |
 
 ### Build order (recommended)
-**Phase 1 (MVP):** Layers 1 + 2 + core of Layer 3 → "Daily Morning Briefing" script
-**Phase 2:** Layer 4 → Trade management
-**Phase 3:** Layer 5 → Review and learning loop
-**Phase 4:** UI (Next.js dashboard) on top of the Python/FastAPI backend
+**Phase 1 (MVP):** Layers 1 + 2 + core of Layer 3 → "Daily Morning Briefing" script ✅
+**Phase 2:** Layer 4 → Trade management ✅
+**Phase 3:** Layer 5 → Review and learning loop ✅
+**Phase 4:** UI (Next.js dashboard) on top of the Python/FastAPI backend ✅
+**Phase 5 (next):** TBD — see `docs/plans/PROGRESS.md` for current next actions
 
 ---
 

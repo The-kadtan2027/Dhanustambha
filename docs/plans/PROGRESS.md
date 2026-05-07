@@ -2,8 +2,8 @@
 
 > Agents: update this file after every completed task. This is the project memory.
 
-**Last updated:** 2026-04-28
-**Current phase:** Phase 2 Operationalization + NSE Calibration Tooling
+**Last updated:** 2026-04-30
+**Current phase:** Phase 4 Dashboard API Foundation
 **Active plan:** `docs/plans/implementation_plan.md`
 
 ## Phase Status
@@ -13,7 +13,7 @@
 | Phase 1 | MVP: Data + Market Monitor + Scanner -> `daily_briefing.py` | Implemented + live validation ongoing |
 | Phase 2 | Trade Management: position sizer, open trade log, P&L | Core workflow implemented |
 | Phase 3 | Review Loop: journal, analytics, backtester | Backtesting/calibration scaffolding implemented |
-| Phase 4 | FastAPI + Next.js UI dashboard | Blocked on Phase 3 |
+| Phase 4 | FastAPI + Next.js UI dashboard | Backend API foundation implemented |
 
 ## Completed Tasks
 
@@ -58,11 +58,22 @@
 - 2026-04-28 - Implemented EP Dual-Tier Output: added an `A+` label to Episodic Pivot candidates passing the optimal tight thresholds (gap≥8.0%, vol≥4.0x, 1 day) and `B` for standard detection. Additive label does not eliminate existing signals from the database.
 - 2026-04-28 - Implemented MB Quality Redesign: added a `HIGH` quality label to Momentum Burst candidates passing research-validated composite filters (NR_10≥6 + close_location≥70% + 20d_high_breakout), which showed 59.7% win rate and 1.69 MFE/MAE historically.
 - 2026-04-28 - Daily briefing UI update: High-tier (`A+`, `HIGH`) setups now sort to the top of scanner sections and are visually marked with a `⭐` in the `daily_briefing.py` console output. Both tiers successfully export to the CSV watchlists.
+- 2026-04-29 - Stop-Loss Optimization Research (MAE): analyzed 700K historical signals to find optimal stop losses. Found fixed % stops consistently outperform ATR-based stops. Applied findings to `config.py` (EP: 4.0%, MB: 2.5%, TI: 1.5%).
+- 2026-04-29 - Target & Exit Strategy Research (MFE): ran simulations comparing fixed % targets, trailing stops, and pure time holds. Concluded that taking profits before 15%+ mathematically destroys expectancy due to tight stops. Optimal exit design identified as: hold 20+ days for maximum alpha, trailing stop to breakeven after a +5% gain.
+- 2026-04-29 - Daily Briefing UI Update: added `STOP_LOSS` dynamic calculation column to `daily_briefing.py` output table based on the new scanner-specific stop-loss configurations.
+- 2026-04-29 - Stream E execution tooling implemented: `trade_manager.py status` now shows `pct_gain`, stored NSE-session `days_held`, and `action_required` (`TRAIL_TO_BREAKEVEN` at +5% with stop below entry, `TIME_EXIT` after 20 stored trading days); added `trade_manager.py update` to modify open-trade stop prices quickly.
+- 2026-04-30 - Phase 4 Task 1 completed: read-only FastAPI dashboard API added in `src/api/main.py` with health, briefing, watchlist, breadth, open-trade, trade-action, and trade-summary endpoints; `requirements.txt` now includes FastAPI/Uvicorn/HTTPX and API tests cover the new contract.
+- 2026-04-30 - Phase 4 Task 2 completed: Next.js dashboard shell added under `frontend/`, consuming the read-only FastAPI endpoints and rendering latest market verdict, watchlist candidates, open trades, action-required queue, and closed-trade summary.
+- 2026-04-30 - Phase 4 Task 3 completed: dashboard detail interactions added with stored briefing date selection, watchlist candidate drill-down, trade-action filters, and API retry/error controls; FastAPI now exposes `GET /briefing/dates` for available stored briefing dates.
+- 2026-04-30 - Phase 4 validation fix: dashboard client-side date switching/retry requests were blocked by missing FastAPI CORS headers; `src/api/main.py` now allows the local dashboard origins (`127.0.0.1` / `localhost` on ports `3000` and `3001`), and API tests cover the browser fetch contract.
+- 2026-04-30 - Phase 4 validation fix: stored watchlist rows for some dates contained exact duplicate entries, which inflated dashboard candidate counts and triggered React duplicate-key warnings during date changes; `get_watchlist()` now returns distinct rows, and API tests cover duplicate collapse in briefing payloads.
+- 2026-05-07 - Phase 4 Task F4 completed: Dashboard UI E2E Testing integrated with Playwright. A smoke test suite `dashboard.spec.ts` was added to verify Next.js page initialization and rendering reliability.
 
 ## In Progress
 
 - Running the briefing live each weekday to accumulate NSE breadth history
 - Monitoring the calibrated scanner defaults in live daily briefings
+- Validating the Phase 4 dashboard against live daily briefing data after each market close
 - Monitoring the updated live EP defaults (`5.0 / 3.0 / 2`) in daily briefings to confirm they surface timely candidates without degrading quality; initial raw EP checks recovered `RAILTEL` across 2026-04-15/16/17 while still staying selective on 2026-04-20/21, and exported April watchlists now distinguish the winning `setup_type` from `matched_setups`
 - Keeping Momentum Burst and Trend Intensity live defaults unchanged until a longer-window or signal-level review produces stronger evidence than the Jan-Jun 2025 window alone
 - 2026-04-15 monitoring checkpoint: reran `daily_briefing.py --date 2026-04-13` against the local DB after adopting calibrated EP/TI defaults; verdict was `DEFENSIVE` with `21` Momentum Burst, `4` Episodic Pivot, and `3` Trend Intensity candidates, and the saved top-10 watchlist remained Momentum Burst-heavy (`6` MB, `3` EP, `1` TI candidate was filtered out of the top list)
@@ -75,7 +86,7 @@
 
 - [x] **Upper circuit handling in Momentum Burst:** `MB_MAX_PCT_CHANGE` was lowered to `20.0` in `config.py` to match the exact maximum NSE circuit limit.
 
-- [ ] **Calibration objective:** Stream D now prioritizes benchmark-relative scoring versus NIFTY, breadth-aware regime splits, and MAE/MFE plus time-stop style analysis before any additional scanner default changes are made.
+- [x] **Calibration objective:** Stream D completed (D1-D6). Richer backtest signal rows (MAE/MFE, benchmark-relative alpha, regime splits, scanner quality features) are implemented. Calibration outputs now rank by alpha-aware, robustness-aware criteria. All calibration reruns completed for Momentum Burst, Episodic Pivot, and Trend Intensity on the Jan–Jun 2025 NIFTY500 window.
 
 - [ ] **Intraday/opening alerts as a future phase:** User wants help reducing market-open FOMO and missed entries. Keep Phase 2 on the current EOD/manual workflow, but capture a future enhancement for "opening-plan" alerts first, and only consider true intraday signal generation after an explicit architecture decision because it would break ADR-004 (`EOD only`) and increase data/infrastructure complexity.
 
@@ -110,7 +121,7 @@
 
 ## Next Action
 
-1. Run `python scripts/daily_briefing.py` every weekday after `16:30 IST`.
-2. Paper trade the new `⭐ A+` Episodic Pivot signals in OFFENSIVE markets via `python scripts/trade_manager.py` for 2-4 weeks to validate edge.
-3. Observe how often `⭐ HIGH` Momentum Burst candidates trigger in live sessions before deciding on final MB scanner removal or retirement.
-4. With only EP demonstrating proven alpha so far, revisit position sizing defaults (`TRADE_RISK_PCT`, `TRADE_MAX_POSITION_PCT`) once live/paper trading builds sufficient confidence in concentrated EP holding logic.
+1. Validate the Phase 4 dashboard against the next live post-close briefing and use it for daily review.
+2. Keep running `python scripts/daily_briefing.py` every weekday after `16:30 IST` so the dashboard has fresh stored breadth/watchlist data.
+3. Paper trading remains parked until the Phase 4 dashboard is validated enough for daily use.
+4. Observe how often high-tier EP/MB candidates trigger in live sessions before deciding on scanner retirement or sizing changes.

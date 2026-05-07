@@ -123,13 +123,15 @@
 ## ADR-007 — Market Monitor thresholds need NSE calibration
 
 **Date:** 2026-04-11  
-**Status:** Open / Needs validation
+**Status:** Accepted — NSE-validated (2026-04-13)
 
 **Context:** Pradeep Bonde's Market Monitor thresholds (% above MA20 > 55% = Offensive, etc.) were calibrated on US markets (S&P 500 universe). NSE may behave differently.
 
-**Decision:** Use Pradeep's thresholds as starting point. Mark all thresholds as explicitly configurable in `config.py`. After Phase 1 is running, back-test the thresholds against 3 years of NSE breadth data and adjust.
+**Decision:** Use Pradeep's thresholds as starting point. All thresholds are configurable in `config.py`.
 
-**Action item:** After Phase 1, generate historical breadth data and compare the Offensive/Defensive verdicts against actual NIFTY 500 returns in the following week. Tune thresholds to maximize signal quality.
+**Validation outcome (2026-04-13):** A 3-year historical breadth run on NIFTY 500 confirmed that the 55% Offensive and 45% Defensive MA20 thresholds correlate optimally with median forward returns on NSE. No threshold changes were warranted. Thresholds are now marked as NSE-validated in `config.py`.
+
+**Action completed:** Historical breadth data was generated and Offensive/Defensive verdicts were compared against NIFTY 500 forward returns. Pradeep's original calibration holds well for NSE.
 
 ---
 

@@ -548,3 +548,165 @@ At the end of Stream D, the repo should be able to answer:
 - Which structure/freshness features improve follow-through?
 - Which setups fail fast enough to justify tight time stops?
 - Whether further `config.py` changes are supported by evidence rather than raw hit-rate alone
+
+---
+
+## Stream E — Systematic Trade Execution Extension
+
+### Context
+
+After calibrating historical signals for MFE/MAE behavior, we found that fixed preset limits destroy expectancy due to our tight stops, while letting trades ride for 20+ days maximizes alpha. We also found a 20-25% giveback rate, meaning trades that hit +5% will frequently fail to breakeven or stop-loss.
+
+To enforce these rules effortlessly, we will upgrade the Option 1 Execution Tooling (`scripts/trade_manager.py`).
+
+### Design philosophy
+
+The CLI should alert the user when their active trades violate math-validated rules. 
+- *Breakeven Trail:* Move stop to entry price when `unrealized_pct_gain >= 5.0%`.
+- *Time Exit:* Recommend closure when days held crosses `20` **NSE calendar trading days**.
+
+### Files changed
+
+#### [MODIFY] `src/trade/log.py`
+- Modify `build_open_trade_status()` to append three columns:
+  - `pct_gain`: `(current_close - entry_price) / entry_price * 100`
+  - `days_held`: The number of NSE trading calendar days since `entry_date`. This will require pulling valid dates from the `ohlcv` DB index.
+  - `action_required`: `TRAIL_TO_BREAKEVEN`, `TIME_EXIT`, or `NONE`.
+
+#### [MODIFY] `scripts/trade_manager.py`
+- Modify `handle_status()` to cleanly format numerical gains and loudly isolate any `action_required` items in a secondary warning print.
+- Create a new `handle_update()` CLI command parser to rapidly modify `stop_price` dynamically without digging into the database.
+
+### Expected Outcomes
+
+- A clear terminal execution dashboard that acts as an automated trade manager, pinging the user strictly on MFE/MAE thresholds.
+- Prepares the foundation for Phase 4 (Web UI) backend endpoints doing the same status calculations.
+
+---
+
+## Stream F - Phase 4 Dashboard API Foundation
+
+### Context
+
+The user parked live paper trading until the browser dashboard is complete. The most
+meaningful next improvement is to expose the existing CLI outputs through a stable
+read-only FastAPI contract before building the Next.js frontend.
+
+### Scope
+
+#### Task F1 - Read-only FastAPI dashboard API
+
+Status: Completed on 2026-04-30.
+
+Implemented endpoints:
+
+- `GET /health`
+- `GET /briefing/latest`
+- `GET /briefing/{date}`
+- `GET /watchlist/latest`
+- `GET /watchlist/{date}`
+- `GET /trades/open`
+- `GET /trades/summary`
+- `GET /trades/actions`
+- `GET /market/breadth/latest`
+- `GET /market/breadth/{date}`
+
+Files changed:
+
+- `src/api/main.py`
+- `src/api/__init__.py`
+- `src/ingestion/store.py`
+- `tests/test_api.py`
+- `requirements.txt`
+
+Verification:
+
+```bash
+python -m pytest tests/ -v
+```
+
+Result on 2026-04-30: `76 passed`.
+
+#### Task F2 - Dashboard frontend shell
+
+Status: Completed on 2026-04-30.
+
+Built the first browser dashboard consuming the read-only API. The frontend is focused
+on operational views first:
+
+- latest market verdict
+- latest watchlist with setup tiers
+- open trades and required actions
+- closed-trade summary
+
+Files changed:
+
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `frontend/app/page.tsx`
+- `frontend/app/globals.css`
+- `frontend/app/layout.tsx`
+- `frontend/next.config.ts`
+- `frontend/tsconfig.json`
+- `.gitignore`
+
+Verification:
+
+```bash
+cd frontend
+npm run build
+npm audit --audit-level=moderate
+```
+
+Result on 2026-04-30: production build passed and npm audit found `0` vulnerabilities.
+
+#### Task F3 - Dashboard detail interactions
+
+Status: Completed on 2026-04-30.
+
+Added operational drill-down without changing the trading logic:
+
+- date selector for stored briefing/watchlist days
+- watchlist candidate detail panel
+- trade action filters
+- API error/retry controls in the UI
+
+Files changed:
+
+- `src/api/main.py`
+- `src/ingestion/store.py`
+- `tests/test_api.py`
+- `frontend/app/page.tsx`
+- `frontend/app/dashboard-client.tsx`
+- `frontend/app/globals.css`
+
+Verification:
+
+```bash
+python -m pytest tests/ -v
+cd frontend
+npm run build
+npm audit --audit-level=moderate
+```
+
+Result on 2026-04-30: backend tests passed, production dashboard build passed, and npm audit found `0` vulnerabilities.
+
+#### Task F4 - Dashboard E2E Testing (Playwright)
+
+Status: Completed on 2026-05-07.
+
+Added Playwright-based end-to-end smoke tests to verify Next.js page initialization and dashboard rendering reliability. The suite validates the critical user-facing rendering path without requiring live API data.
+
+Files changed:
+
+- `frontend/tests/dashboard.spec.ts`
+- `frontend/playwright.config.ts` (if added)
+
+Verification:
+
+```bash
+cd frontend
+npx playwright test
+```
+
+Result on 2026-05-07: Smoke test suite passes, verifying dashboard page initialization and key rendering behaviour.
