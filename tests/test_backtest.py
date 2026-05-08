@@ -11,9 +11,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.review.backtest import build_parameter_grid, run_backtest
 
 
-def test_backtest_runs_on_synthetic_data():
+def test_backtest_runs_on_synthetic_data(monkeypatch):
     """Backtest should emit richer signal rows and summary metrics on synthetic data."""
+    import config
     from src.scanner.momentum_burst import detect_momentum_burst
+
+    # Relax the G2-validated live prior-run filter for this infrastructure test.
+    # The flat synthetic closes (0% prior run) fail MB_MAX_PRIOR_RUN = -2.3;
+    # this test is about backtest mechanics, not filter correctness.
+    monkeypatch.setattr(config, "MB_MAX_PRIOR_RUN", 15.0)
 
     rows = []
     dates = pd.date_range("2025-01-01", periods=40, freq="B")
@@ -338,6 +344,55 @@ def test_backtest_ep_detects_same_day_gap_with_prepared_history():
     assert result.n_signals == 1
     assert result.signal_results.iloc[0]["symbol"] == "GAPTEST"
     assert result.signal_results.iloc[0]["days_since_gap"] == 0
+
+
+def test_backtest_ti_prepared_history_uses_benchmark_for_relative_strength():
+    """Trend Intensity backtests should populate RS when benchmark history is separate."""
+    from src.scanner.trend_intensity import detect_trend_intensity
+
+    dates = pd.date_range("2024-01-01", periods=230, freq="B")
+    closes = np.linspace(100.0, 170.0, len(dates))
+    volumes = [300_000] * len(dates)
+    signal_index = 220
+    volumes[signal_index] = 500_000
+    history = pd.DataFrame(
+        {
+            "symbol": ["TREND"] * len(dates),
+            "date": dates,
+            "open": closes * 0.995,
+            "high": closes * 1.005,
+            "low": closes * 0.990,
+            "close": closes,
+            "volume": volumes,
+        }
+    )
+    benchmark_closes = np.linspace(1000.0, 1100.0, len(dates))
+    benchmark_history = pd.DataFrame(
+        {
+            "symbol": ["^NSEI"] * len(dates),
+            "date": dates,
+            "open": benchmark_closes * 0.995,
+            "high": benchmark_closes * 1.005,
+            "low": benchmark_closes * 0.990,
+            "close": benchmark_closes,
+            "volume": [1_000_000] * len(dates),
+        }
+    )
+
+    result = run_backtest(
+        scanner_fn=detect_trend_intensity,
+        universe="NIFTY50_TEST",
+        start_date=dates[signal_index].date().isoformat(),
+        end_date=dates[signal_index].date().isoformat(),
+        price_history=history,
+        benchmark_history=benchmark_history,
+        forward_days=(1,),
+    )
+
+    assert result.n_signals == 1
+    signal = result.signal_results.iloc[0]
+    assert pd.notna(signal["relative_strength_vs_benchmark_3m"])
+    assert signal["relative_strength_vs_benchmark_3m"] > 0.0
 
 
 def test_build_parameter_grid_matches_stream_d6_ranges():

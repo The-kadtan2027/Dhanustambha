@@ -87,6 +87,49 @@ def test_detect_ep_exposes_research_feature_columns():
     assert row["gap_pct"] >= 4.0
 
 
+def test_detect_ep_max_gap_volume_ratio_disabled_by_default():
+    """The optional research cap should not change live detection while set to 0.0."""
+    import config
+    from src.scanner.episodic_pivot import detect_episodic_pivot
+
+    original_value = config.EP_MAX_GAP_VOLUME_RATIO
+    config.EP_MAX_GAP_VOLUME_RATIO = 0.0
+    try:
+        df = _make_ep_df(
+            pre_closes=[100.0] * 30,
+            gap_day_data={"open": 106.0, "close": 108.0, "volume": 1_400_000},
+            post_closes=[108.0, 109.0],
+        )
+
+        result = detect_episodic_pivot(df)
+
+        assert len(result) == 1
+        assert result.iloc[0]["gap_vol_ratio"] > 4.9
+    finally:
+        config.EP_MAX_GAP_VOLUME_RATIO = original_value
+
+
+def test_detect_ep_respects_max_gap_volume_ratio_filter():
+    """The optional research cap should reject outsized gap-day volume spikes."""
+    import config
+    from src.scanner.episodic_pivot import detect_episodic_pivot
+
+    original_value = config.EP_MAX_GAP_VOLUME_RATIO
+    config.EP_MAX_GAP_VOLUME_RATIO = 4.9
+    try:
+        df = _make_ep_df(
+            pre_closes=[100.0] * 30,
+            gap_day_data={"open": 106.0, "close": 108.0, "volume": 1_400_000},
+            post_closes=[108.0, 109.0],
+        )
+
+        result = detect_episodic_pivot(df)
+
+        assert len(result) == 0
+    finally:
+        config.EP_MAX_GAP_VOLUME_RATIO = original_value
+
+
 def test_prepared_ep_features_preserve_detection_result():
     """Prepared-history path should preserve Episodic Pivot detection semantics."""
     from src.scanner.episodic_pivot import (
@@ -309,3 +352,44 @@ def test_detect_ti_no_trend_below_ma50():
     result = detect_trend_intensity(df)
 
     assert len(result) == 0
+
+
+def test_ti_pullback_filter_rejects_deep_pullback():
+    """detect_trend_intensity() must reject stocks with pullback_depth_20d > TI_MAX_PULLBACK_DEPTH_PCT.
+
+    G2-validated filter: stocks experiencing a deep 20-day pullback (>16%) are excluded
+    because shallow pullbacks deliver significantly better forward alpha than violent flush
+    pullbacks inside an uptrend.
+    """
+    import config
+    import numpy as np
+    from src.scanner.trend_intensity import detect_trend_intensity
+
+    original = config.TI_MAX_PULLBACK_DEPTH_PCT
+    config.TI_MAX_PULLBACK_DEPTH_PCT = 16.0
+    try:
+        count = 60
+        closes = list(np.linspace(100, 115, count))
+        highs = [c * 1.005 for c in closes]
+        lows = [c * 0.990 for c in closes]
+        # The severe low must be within the rolling-20-day window at the last row.
+        # Place it at index 45 (15 rows before the final row at index 59).
+        # low = 65% of the high at that bar → (high - low)/high ≈ 35%, well above 16%.
+        lows[45] = highs[45] * 0.65
+        volumes = [300_000] * (count - 1) + [450_000]
+        dates = pd.date_range("2025-01-01", periods=count, freq="B")
+        df = pd.DataFrame({
+            "symbol": "DEEPDIP",
+            "date": dates,
+            "open": [c * 0.995 for c in closes],
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": volumes,
+        })
+        result = detect_trend_intensity(df)
+        assert result.empty, (
+            "Should reject TI candidate with 20d pullback depth > 16% (G2-validated TI filter)"
+        )
+    finally:
+        config.TI_MAX_PULLBACK_DEPTH_PCT = original

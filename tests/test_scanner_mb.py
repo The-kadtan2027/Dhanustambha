@@ -3,6 +3,14 @@
 import pandas as pd
 import pytest
 
+import config
+
+
+@pytest.fixture(autouse=True)
+def _relax_prior_run_filter(monkeypatch):
+    """Synthetic tests use flat bases which fail the new strict -2.3% limit."""
+    monkeypatch.setattr(config, "MB_MAX_PRIOR_RUN", 15.0)
+
 
 def _make_symbol_df(closes, volumes, symbol="TEST") -> pd.DataFrame:
     """Build a single-symbol OHLCV DataFrame with deterministic values."""
@@ -227,3 +235,28 @@ def test_mb_quality_column_always_present():
     result = detect_momentum_burst(df)
 
     assert "mb_quality" in result.columns
+
+
+def test_mb_prior_run_filter_rejects_extended_stock():
+    """detect_momentum_burst() must reject stocks whose prior 10d run exceeds MB_MAX_PRIOR_RUN.
+
+    G2-validated filter: stocks already up >-2.3% in the prior 10 days before the burst
+    are excluded because prior exhaustion run predicts poor forward alpha.
+    """
+    from src.scanner.momentum_burst import detect_momentum_burst
+
+    # The autouse fixture relaxes MB_MAX_PRIOR_RUN to 15.0 for the session,
+    # so we need to tighten it back to the G2-validated value for this test.
+    original = config.MB_MAX_PRIOR_RUN
+    config.MB_MAX_PRIOR_RUN = -2.3
+    try:
+        # days 0-9: run from 90.0 → 99.0 (+10% prior run), days 10-24: flat, day 25: burst
+        closes = [90.0, 91.0, 92.0, 93.0, 94.0, 95.0, 96.0, 97.0, 98.0, 99.0] + [99.0] * 15 + [108.0]
+        volumes = [200_000] * 25 + [600_000]
+        df = _make_symbol_df(closes, volumes)
+        result = detect_momentum_burst(df)
+        assert result.empty, (
+            "Should reject stock with prior 10d run > -2.3% (G2-validated MB filter)"
+        )
+    finally:
+        config.MB_MAX_PRIOR_RUN = original
