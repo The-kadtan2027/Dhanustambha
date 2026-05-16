@@ -7,11 +7,12 @@ data/*.db-shm
 # ── Data outputs (large, regenerable, never commit) ──────────────────────────
 data/watchlists/
 data/calibration/
-data/research/
+data/research/*.csv
 data/universe_cache/
 
 # ── Log files ─────────────────────────────────────────────────────────────────
 logs/
+
 *.log
 *.err.log
 *.out.log

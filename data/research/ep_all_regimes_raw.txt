@@ -1,0 +1,95 @@
+﻿Loaded 27715 signals from data/calibration/2026-04-25-episodic_pivot-NIFTY500-signals.csv
+
+======================================================================
+FEATURE ANALYSIS -- EPISODIC_PIVOT | regime=all | n=27715
+======================================================================
+Promotion threshold: spread >= 15.0pp AND n >= 15 per bucket
+
+
+-- market_verdict (spread=17.8pp) [CANDIDATE]
+   bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+    AVOID 3124             41.9              37.8             -1.34              -1.57              3.06
+DEFENSIVE 1619             58.2              47.5              0.28               0.79             18.46
+OFFENSIVE 2337             59.7              49.7              0.88               2.39             14.15
+
+-- gap_day_close_vs_open_pct (spread=17.1pp) [CANDIDATE]
+      bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+   Q1 (<1.1) 7031             57.5              57.9              0.95               1.59             10.54
+Q2 (1.1-2.8) 7002             54.2              51.7             -0.25              -0.19              6.91
+Q3 (2.8-6.5) 6852             55.3              57.5              0.02               2.07             11.62
+   Q4 (>6.5) 6830             40.4              36.3             -1.37              -1.50              6.46
+
+-- gap_day_close_location_pct (spread=16.1pp) [CANDIDATE]
+        bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+    Q1 (<46.9) 6932             51.1              55.3              0.49               1.45             10.75
+Q2 (46.9-70.8) 6946             57.5              43.3              0.21               0.21              9.37
+Q3 (70.8-88.7) 6952             57.5              63.0              0.04               1.45              8.14
+    Q4 (>88.7) 6885             41.4              41.8             -1.36              -1.14              7.27
+
+-- gap_fill_pct (spread=13.9pp) [WEAK]
+        bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+    Q1 (<17.6) 7139             43.4              46.9             -1.01              -0.08              6.96
+Q2 (17.6-30.4) 6759             53.6              47.1             -0.56              -0.13              6.36
+Q3 (30.4-45.3) 6942             53.7              55.3              0.46               1.95             11.90
+    Q4 (>45.3) 6875             57.3              54.3              0.53               0.30             10.31
+
+-- gap_pct (spread=12.1pp) [WEAK]
+      bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+   Q1 (<5.3) 6957             54.3              55.8              0.29               0.84             10.93
+Q2 (5.3-7.0) 7031             44.1              40.4             -0.68              -0.87              7.32
+Q3 (7.0-9.3) 6863             56.2              56.9             -0.01               0.62             10.25
+   Q4 (>9.3) 6864             53.3              50.6             -0.21               1.37              7.05
+
+-- distance_to_52w_high_before_gap (spread=12.0pp) [WEAK]
+        bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+    Q1 (<10.4) 7070             46.9              56.4             -0.55               0.43             10.57
+Q2 (10.4-21.3) 6825             58.9              52.5              0.65               1.44              7.28
+Q3 (21.3-33.3) 6956             54.0              48.6             -0.37              -0.04              6.29
+    Q4 (>33.3) 6864             48.0              45.9             -0.32               0.14             11.44
+
+-- gap_vol_ratio (spread=9.2pp) [WEAK]
+        bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+     Q1 (<6.7) 7051             55.8              50.9              0.14               0.40             10.24
+ Q2 (6.7-10.6) 6938             55.3              53.1              0.53               0.32             12.09
+Q3 (10.6-23.1) 6800             46.6              49.0             -1.05               0.68              7.04
+    Q4 (>23.1) 6926             49.8              50.5             -0.25               0.59              6.09
+
+-- prior_65d_weakness_pct (spread=8.8pp) [WEAK]
+        bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+    Q1 (<18.7) 6937             52.8              51.2             -0.24              -0.15              6.16
+Q2 (18.7-25.2) 6922             50.3              55.2             -0.26               1.02              5.94
+Q3 (25.2-35.0) 6948             47.9              44.7             -0.78               0.13             10.83
+    Q4 (>35.0) 6908             56.7              52.4              0.68               1.00             12.71
+
+-- days_since_gap (spread=7.3pp) [NOISE]
+      bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+   Q1 (<0.0) 7904             51.2              51.6             -0.74              -0.14              5.94
+Q2 (0.0-1.0) 7396             54.6              48.8             -0.22               0.60             11.82
+Q3 (1.0-3.0) 8803             52.2              52.4              0.05               0.58              7.52
+   Q4 (>3.0) 3612             47.3              49.7              0.81               1.49             12.74
+
+-- holding_above_gap_open_days (spread=5.3pp) [NOISE]
+      bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+   Q1 (<0.0) 7904             51.2              51.6             -0.74              -0.14              5.94
+Q2 (0.0-1.0) 8370             53.8              49.3             -0.12               0.55             11.50
+Q3 (1.0-2.0) 5384             53.8              52.1              0.13               0.59              7.06
+   Q4 (>2.0) 6057             48.5              51.1              0.34               1.20             10.79
+
+-- prior_65d_run_pct (spread=4.0pp) [NOISE]
+         bucket    n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+    Q1 (<-14.4) 6975             50.5              41.7             -0.15               0.21             10.46
+Q2 (-14.4--0.5) 6971             54.2              53.8             -0.42               0.85              6.30
+ Q3 (-0.5-10.9) 6914             50.2              51.6             -0.20              -0.18              6.96
+     Q4 (>10.9) 6855             52.7              56.5              0.17               1.08             11.91
+
+-- is_first_gap_in_6m (spread=2.6pp) [NOISE]
+bucket     n  win_rate_5d_pct  win_rate_10d_pct  avg_alpha_5d_pct  avg_alpha_10d_pct  mfe_mae_ratio_5d
+  True 13905             53.2              48.5             -0.01               0.33              7.34
+ False 13810             50.6              53.3             -0.29               0.68             10.45
+
+======================================================================
+PROMOTION CANDIDATES (3): market_verdict, gap_day_close_vs_open_pct, gap_day_close_location_pct
+-> Next step: validate with calibrate_thresholds.py --feature-filters
+======================================================================
+
+Report saved to D:\antigravity\Dhanustambha\data\research\2026-05-07-episodic_pivot-feature-analysis.md
