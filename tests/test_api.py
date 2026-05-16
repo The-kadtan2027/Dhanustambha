@@ -306,3 +306,26 @@ def test_ohlcv_endpoint_returns_candles_and_ma(api_client):
     first = payload["candles"][0]
     for key in ("time", "open", "high", "low", "close", "volume", "ma20", "ma50"):
         assert key in first, f"Missing key: {key}"
+
+def test_breadth_history_endpoint_returns_rows(api_client):
+    """GET /market/breadth/history should return a list of breadth rows."""
+    import sqlite3
+    conn = sqlite3.connect(__import__("config").DB_PATH)
+    conn.execute("""
+        INSERT OR IGNORE INTO breadth
+          (date, pct_above_ma20, pct_above_ma50, new_highs_52w, new_lows_52w,
+           up_volume_ratio, advancing, declining, verdict)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("2026-05-01", 60.0, 55.0, 80, 10, 0.65, 300, 200, "OFFENSIVE"))
+    conn.commit()
+    conn.close()
+
+    response = api_client.get("/market/breadth/history?days=60")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "items" in payload
+    assert isinstance(payload["items"], list)
+    assert len(payload["items"]) >= 1
+    first = payload["items"][0]
+    for key in ("date", "pct_above_ma20", "up_volume_ratio", "verdict"):
+        assert key in first, f"Missing key: {key}"

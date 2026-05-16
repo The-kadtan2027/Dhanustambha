@@ -306,6 +306,32 @@ def get_breadth(date: Optional[str] = None) -> Dict[str, object]:
         conn.close()
 
 
+def get_breadth_history(days: int = 60) -> list[dict]:
+    """Return the most recent `days` breadth rows from the DB, oldest first.
+
+    Returns:
+        List of dicts keyed by breadth column names.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT date, pct_above_ma20, pct_above_ma50, new_highs_52w,
+                      new_lows_52w, up_volume_ratio, advancing, declining, verdict
+               FROM breadth
+               ORDER BY date DESC
+               LIMIT ?""",
+            (days,),
+        )
+        cols = [d[0] for d in cursor.description]
+        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        rows.reverse()   # oldest first for charting
+        return rows
+    except sqlite3.OperationalError as exc:
+        logger.error("breadth_history query failed: %s", exc)
+        return []
+
+
 def get_breadth_dates() -> List[str]:
     """Return stored breadth dates newest first."""
     conn = get_connection()

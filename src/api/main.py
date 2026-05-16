@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.ingestion.store import (
     get_breadth,
     get_breadth_dates,
+    get_breadth_history,
     get_ohlcv,
     get_watchlist,
     init_db,
@@ -133,6 +134,13 @@ def health() -> Dict[str, str]:
 def latest_breadth() -> Dict[str, Any]:
     """Return the latest stored Market Monitor breadth reading."""
     return _require_breadth()
+
+
+@app.get("/market/breadth/history")
+def breadth_history(days: int = 60) -> Dict[str, Any]:
+    """Return the last N days of stored breadth readings, oldest first."""
+    rows = get_breadth_history(days=days)
+    return {"count": len(rows), "items": rows}
 
 
 @app.get("/market/breadth/{date}")
