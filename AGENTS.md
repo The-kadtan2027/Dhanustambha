@@ -258,9 +258,12 @@ Stop-loss config (from MAE research):
 - TI: 1.5% fixed stop
 
 Exit rules (from MFE research):
-- Hold 20+ stored trading days for maximum alpha
-- Trail stop to breakeven after +5% gain
-- action_required flags: TRAIL_TO_BREAKEVEN at +5%, TIME_EXIT after 20 days
+- Hold up to 20 stored trading days for maximum alpha
+- Aggressive Trailing Tiers:
+  1. +3.0% gain -> trail stop to Breakeven
+  2. +7.5% gain -> trail stop to +3.0%
+  3. +10.0% gain -> trail stop to +7.5%
+- EP Runner Re-Entry: closed EP winners are automatically tracked for PB to MA10/MA20 breakouts filter over next 30 days
 ```
 
 ---
@@ -575,7 +578,8 @@ Do not silently make a decision that changes architecture or data models. Those 
 | Phase 2 | Trade Management: position sizer, open trade log, P&L | ✅ Complete |
 | Phase 3 | Review Loop: journal, analytics, calibration backtester | ✅ Complete (calibration active) |
 | Phase 4 | FastAPI + Next.js UI dashboard | ✅ Complete through F4 |
-| Phase 5 / Stream G | Scanner Win-Rate R&D: feature analysis, validation, promotion/demotion gates | 🔄 In progress |
+| Phase 5 / Stream G | Scanner Win-Rate R&D: feature analysis, validation, promotion/demotion gates | ✅ Complete |
+| Phase 6 | Paper Trading & Exit Mechanics Execution | 🔄 In progress |
 
 **Phase 1** is complete when `python scripts/daily_briefing.py` runs and produces:
 
@@ -603,9 +607,9 @@ Watchlist saved to: data/watchlists/2026-05-16.csv
 ## 9. Current Status & Active Plan
 
 **Last updated:** 2026-05-16
-**Current phase:** Phase 5 / Stream G — Scanner Win-Rate R&D
+**Current phase:** Phase 6 — Paper Trading
 
-**Active plan file:** `docs/superpowers/plans/2026-05-07-scanner-winrate-rd-plan.md`
+**Active plan file:** `docs/superpowers/plans/2026-05-16-aggressive-trailing-exits.md`
 
 **Research findings file:** `data/research/FINDINGS.md`
 
@@ -638,9 +642,7 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 ### Next Actions
 
 1. **Fix pre-existing test failure:** `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` fails because synthetic close series does not satisfy `MB_MAX_PRIOR_RUN = -2.3`. Fix by relaxing the synthetic fixture's prior-run or monkeypatching `MB_MAX_PRIOR_RUN` in the test.
-2. **Task 9 — Demotion decision:** MB and TI each have one validated live filter. Decide whether remaining signal quality is sufficient to keep them in the main watchlist, or whether a `REFERENCE_ONLY_SCANNERS` gate is warranted. Record verdict in `FINDINGS.md`.
-3. **Continue daily live monitoring** and Phase 4 dashboard validation in parallel.
-4. **Paper trading** begins when Stream G demotion/promotion decisions are finalised.
+2. **Continue daily live monitoring** and Phase 6 paper trading validation in parallel.
 
 ---
 
@@ -702,6 +704,11 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 ✅ 2026-05-08 — Stream G Task 10: TI RS full-grid FAILED; RS not promoted
 ✅ 2026-05-08 — Stream G G3 tests: test_mb_prior_run_filter_rejects_extended_stock + test_ti_pullback_filter_rejects_deep_pullback added
 ✅ 2026-05-16 — AGENTS.md created: single source of truth consolidating all project docs
+✅ 2026-05-16 — Stream G Task 9 (Demotion Review): TI demoted to REFERENCE_ONLY; MB retained ACTIVE with G2 filter
+✅ 2026-05-16 — Phase 6 Target Analysis: Validated deep edge of Aggressive Trailing ladders over standard Fixed Exits 
+✅ 2026-05-16 — Phase 6 Exits: Implemented 3-Tier Aggressive Trailing exit logic in `determine_action_required` 
+✅ 2026-05-16 — Phase 6 Reentry: Built and integrated EP Re-Entry scanner into `daily_briefing.py` 
+✅ 2026-05-16 — Phase 6 Validation: Proven Microcaps/NIFTY750 drastically decays EP win rate; NIFTY500 confirmed ideal
 ```
 
 ---
