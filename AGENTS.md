@@ -723,6 +723,12 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
    - Embedded chart in `CandidateDetailPanel` — loads on symbol select, shows entry/stop dashed lines in execute mode
    - Embedded chart in Trade Book action panel — appears on Modify Stop / Close with live entry/stop overlays
    - Merged `feature/embedded-charts` into `main`
+✅ 2026-05-16 — Task 21: Breadth Dashboard (Sub-Project 3)
+   - Added `GET /market/breadth/history?days=60` API endpoint
+   - Installed `recharts` v2 (MIT, zero API key)
+   - Built `BreadthGauges.tsx` component with radial gauges (Above MA20, Above MA50, Up Vol), High/Low bar, and historical breadth line chart
+   - Integrated into the existing text-only `MarketPanel` on the main dashboard without removing metrics
+   - Merged `feature/breadth-dashboard` into `main`
 ```
 
 ---
