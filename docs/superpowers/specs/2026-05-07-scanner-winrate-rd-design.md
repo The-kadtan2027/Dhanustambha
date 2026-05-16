@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-07  
 **Author:** Gaju (via brainstorming session)  
-**Status:** Approved — ready for implementation planning
+**Status:** Completed — feature pipelines integrated and live filters promoted
 
 ---
 
@@ -235,9 +235,9 @@ None. All design decisions are resolved.
 ## Sequencing
 
 ```
-Week 1:  G1 — build analyze_signal_features.py, run on EP signals
-Week 2:  G1 findings review → pick top 2 EP features for G2
-Week 3:  G2 — extended EP calibration with feature dims
-Week 4:  G3 — promote validated EP features to live filters
-Week 5:  G4 — MB/TI feature analysis and rehabilitation decision
+Week 1:  G1 — build analyze_signal_features.py, run on EP signals [COMPLETED]
+Week 2:  G1 findings review → pick top 2 EP features for G2 [COMPLETED]
+Week 3:  G2 — extended EP calibration with feature dims [COMPLETED]
+Week 4:  G3 — promote validated EP features to live filters [COMPLETED]
+Week 5:  G4 — MB/TI feature analysis and rehabilitation decision [COMPLETED — MB prior_run and TI pullback_depth promoted]
 ```
