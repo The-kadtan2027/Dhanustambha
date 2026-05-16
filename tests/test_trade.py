@@ -136,9 +136,9 @@ def test_build_open_trade_status_uses_latest_close(tmp_db):
                 "symbol": "INFY",
                 "date": "2026-04-11",
                 "open": 101.0,
-                "high": 103.0,
+                "high": 102.0,
                 "low": 100.0,
-                "close": 104.0,
+                "close": 102.0,
                 "volume": 550000,
             },
         ]
@@ -156,9 +156,9 @@ def test_build_open_trade_status_uses_latest_close(tmp_db):
     status_df = build_open_trade_status(as_of_date="2026-04-11")
 
     assert len(status_df) == 1
-    assert float(status_df.iloc[0]["current_close"]) == 104.0
-    assert float(status_df.iloc[0]["unrealized_pnl"]) == 40.0
-    assert float(status_df.iloc[0]["pct_gain"]) == 4.0
+    assert float(status_df.iloc[0]["current_close"]) == 102.0
+    assert float(status_df.iloc[0]["unrealized_pnl"]) == 20.0
+    assert float(status_df.iloc[0]["pct_gain"]) == 2.0
     assert int(status_df.iloc[0]["days_held"]) == 1
     assert status_df.iloc[0]["action_required"] == "NONE"
 
@@ -212,6 +212,38 @@ def test_open_trade_status_flags_breakeven_trail(tmp_db):
     updated_status = build_open_trade_status(as_of_date="2026-04-13")
     assert float(updated_status.iloc[0]["stop_price"]) == 100.0
     assert updated_status.iloc[0]["action_required"] == "NONE"
+
+
+def test_open_trade_status_flags_advanced_trailing_tiers(tmp_db):
+    """A trade up 8% should request TRAIL_TO_3PCT, up 11% should request TRAIL_TO_7_5PCT."""
+    from src.ingestion.store import init_db, upsert_ohlcv
+    from src.trade.log import build_open_trade_status, open_trade
+
+    init_db()
+    upsert_ohlcv(
+        [
+            {"symbol": "TCS", "date": "2026-05-01", "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 500},
+            {"symbol": "TCS", "date": "2026-05-02", "open": 100.0, "high": 109.0, "low": 99.0, "close": 108.0, "volume": 500},
+            {"symbol": "TCS", "date": "2026-05-03", "open": 100.0, "high": 112.0, "low": 99.0, "close": 111.0, "volume": 500},
+        ]
+    )
+    open_trade(
+        symbol="TCS",
+        setup_type="EP",
+        entry_date="2026-05-01",
+        entry_price=100.0,
+        shares=10,
+        stop_price=96.0,
+    )
+
+    # 8.0% gain
+    status_df2 = build_open_trade_status(as_of_date="2026-05-02")
+    assert status_df2.iloc[0]["action_required"] == "TRAIL_TO_3PCT"
+
+    # 11.0% gain
+    status_df3 = build_open_trade_status(as_of_date="2026-05-03")
+    assert status_df3.iloc[0]["action_required"] == "TRAIL_TO_7_5PCT"
+
 
 
 def test_open_trade_status_flags_time_exit_after_twenty_trading_days(tmp_db):

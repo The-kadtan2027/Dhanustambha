@@ -189,12 +189,21 @@ def determine_action_required(
     if days_held >= config.TRADE_TIME_EXIT_DAYS:
         return "TIME_EXIT"
 
-    if (
-        pct_gain is not None
-        and pct_gain >= config.TRADE_BREAKEVEN_TRIGGER_PCT
-        and stop_price < entry_price
-    ):
-        return "TRAIL_TO_BREAKEVEN"
+    if pct_gain is not None:
+        if pct_gain >= config.TRADE_TRAIL_TIER_3_TRIGGER_PCT:
+            expected_stop = entry_price * (1 + (config.TRADE_TRAIL_TIER_3_STOP_PCT / 100))
+            if stop_price < expected_stop:
+                return "TRAIL_TO_7_5PCT"
+                
+        if pct_gain >= config.TRADE_TRAIL_TIER_2_TRIGGER_PCT:
+            expected_stop = entry_price * (1 + (config.TRADE_TRAIL_TIER_2_STOP_PCT / 100))
+            if stop_price < expected_stop:
+                return "TRAIL_TO_3PCT"
+                
+        if pct_gain >= config.TRADE_TRAIL_TIER_1_TRIGGER_PCT:
+            expected_stop = entry_price * (1 + (config.TRADE_TRAIL_TIER_1_STOP_PCT / 100))
+            if stop_price < expected_stop:
+                return "TRAIL_TO_BREAKEVEN"
 
     return "NONE"
 
