@@ -716,6 +716,13 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
    - Built inline watchlist execution modal with auto-calculated 1% risk position sizing
    - Created dedicated frontend `/trades` UI (Trade Book) for managing active positions
    - Merged `feature/interactive-trade-book` into `main`
+✅ 2026-05-16 — Task 20: Embedded Charts (Sub-Project 2)
+   - Added `GET /ohlcv/{symbol}?days=90` API endpoint with MA20/MA50 rolling calculations
+   - Installed `lightweight-charts` v5 (MIT, zero API key)
+   - Built shared `CandleChart.tsx` component (candlestick + volume histogram + MA lines + entry/stop overlays)
+   - Embedded chart in `CandidateDetailPanel` — loads on symbol select, shows entry/stop dashed lines in execute mode
+   - Embedded chart in Trade Book action panel — appears on Modify Stop / Close with live entry/stop overlays
+   - Merged `feature/embedded-charts` into `main`
 ```
 
 ---
