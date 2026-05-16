@@ -76,6 +76,23 @@ Rooted Android (backup / mobile use)
 
 **Local PowerShell note:** Use `C:\Program Files\Python312\python.exe` — there is no default `python`/`py` on PATH in this environment.
 
+### How to Run the Trading GUI
+
+To interactively test GUI features or evaluate the system locally, you need to spin up both the FastAPI backend and Next.js frontend in separate terminal windows:
+
+**Terminal 1 — FastAPI Backend**
+```powershell
+python -m uvicorn src.api.main:app --reload
+```
+*(Runs on `http://127.0.0.1:8000`)*
+
+**Terminal 2 — Next.js Frontend Dashboard**
+```powershell
+cd frontend
+npm run dev
+```
+*(Runs on `http://localhost:3000`)*
+
 ### Repository Layout
 
 ```

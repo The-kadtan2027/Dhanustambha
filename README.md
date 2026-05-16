@@ -79,6 +79,31 @@ Rooted Android (backup / mobile use)
 
 ---
 
+## Quickstart — Running The Trading Terminal
+
+Dhanustambha includes a fully interactive Next.js trading terminal for paper trading, visual market breadth, and candidate chart analysis.
+
+To start the system, you need two terminal windows:
+
+**Terminal 1 — FastAPI Backend**
+```powershell
+# From the project root
+python -m uvicorn src.api.main:app --reload
+```
+*(Runs on `http://127.0.0.1:8000`)*
+
+**Terminal 2 — Next.js Frontend Dashboard**
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+*(Runs on `http://localhost:3000`)*
+
+Open **http://localhost:3000** in your browser.
+
+---
+
 ## Repository Layout
 
 ```
