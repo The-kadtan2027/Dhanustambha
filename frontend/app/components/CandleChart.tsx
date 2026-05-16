@@ -3,10 +3,12 @@
 import { useEffect, useRef } from "react";
 import {
   createChart,
+  CandlestickSeries,
+  HistogramSeries,
+  LineSeries,
   type IChartApi,
-  type CandlestickData,
-  type LineData,
-  type HistogramData,
+  type ISeriesApi,
+  type CandlestickSeriesOptions,
   ColorType,
 } from "lightweight-charts";
 
@@ -66,25 +68,26 @@ export default function CandleChart({
     });
     chartRef.current = chart;
 
-    // --- Candlestick series ---
-    const candleSeries = chart.addCandlestickSeries({
+    // --- Candlestick series (v5 API) ---
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#22c55e",
       downColor: "#ef4444",
       borderVisible: false,
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
-    });
-    const candleData: CandlestickData[] = candles.map((c) => ({
-      time: c.time as unknown as CandlestickData["time"],
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    }));
-    candleSeries.setData(candleData);
+    } as Partial<CandlestickSeriesOptions>);
+    candleSeries.setData(
+      candles.map((c) => ({
+        time: c.time as Parameters<typeof candleSeries.setData>[0][number]["time"],
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }))
+    );
 
     // --- Volume histogram (secondary scale) ---
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       color: "rgba(100,116,139,0.35)",
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
@@ -92,47 +95,47 @@ export default function CandleChart({
     chart.priceScale("vol").applyOptions({
       scaleMargins: { top: 0.8, bottom: 0 },
     });
-    const volData: HistogramData[] = candles.map((c) => ({
-      time: c.time as unknown as HistogramData["time"],
-      value: c.volume,
-      color:
-        c.close >= c.open
-          ? "rgba(34,197,94,0.3)"
-          : "rgba(239,68,68,0.3)",
-    }));
-    volumeSeries.setData(volData);
+    volumeSeries.setData(
+      candles.map((c) => ({
+        time: c.time as Parameters<typeof volumeSeries.setData>[0][number]["time"],
+        value: c.volume,
+        color: c.close >= c.open ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)",
+      }))
+    );
 
     // --- MA20 line (amber) ---
-    const ma20Series = chart.addLineSeries({
+    const ma20Series = chart.addSeries(LineSeries, {
       color: "#f59e0b",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const ma20Data: LineData[] = candles
-      .filter((c) => c.ma20 !== null)
-      .map((c) => ({
-        time: c.time as unknown as LineData["time"],
-        value: c.ma20 as number,
-      }));
-    ma20Series.setData(ma20Data);
+    ma20Series.setData(
+      candles
+        .filter((c) => c.ma20 !== null)
+        .map((c) => ({
+          time: c.time as Parameters<typeof ma20Series.setData>[0][number]["time"],
+          value: c.ma20 as number,
+        }))
+    );
 
     // --- MA50 line (indigo) ---
-    const ma50Series = chart.addLineSeries({
+    const ma50Series = chart.addSeries(LineSeries, {
       color: "#818cf8",
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const ma50Data: LineData[] = candles
-      .filter((c) => c.ma50 !== null)
-      .map((c) => ({
-        time: c.time as unknown as LineData["time"],
-        value: c.ma50 as number,
-      }));
-    ma50Series.setData(ma50Data);
+    ma50Series.setData(
+      candles
+        .filter((c) => c.ma50 !== null)
+        .map((c) => ({
+          time: c.time as Parameters<typeof ma50Series.setData>[0][number]["time"],
+          value: c.ma50 as number,
+        }))
+    );
 
-    // --- Entry price horizontal dashed line (green) ---
+    // --- Entry price dashed line (green) ---
     if (entryPrice) {
       candleSeries.createPriceLine({
         price: entryPrice,
@@ -144,7 +147,7 @@ export default function CandleChart({
       });
     }
 
-    // --- Stop loss horizontal dashed line (red) ---
+    // --- Stop loss dashed line (red) ---
     if (stopPrice && stopPrice > 0) {
       candleSeries.createPriceLine({
         price: stopPrice,

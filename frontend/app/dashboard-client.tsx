@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import CandleChart, { type Candle } from "./components/CandleChart";
 import {
   Activity,
   AlertTriangle,
@@ -276,11 +277,23 @@ function CandidateDetailPanel({
   const [isExecuting, setIsExecuting] = useState(false);
   const [stopPrice, setStopPrice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [candles, setCandles] = useState<Candle[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
 
   useEffect(() => {
     setIsExecuting(false);
     setStopPrice("");
   }, [item]);
+
+  useEffect(() => {
+    if (!item) { setCandles([]); return; }
+    setChartLoading(true);
+    fetch(`${apiBaseUrl}/ohlcv/${item.symbol}?days=90`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data) => setCandles(data.candles ?? []))
+      .catch(() => setCandles([]))
+      .finally(() => setChartLoading(false));
+  }, [item, apiBaseUrl]);
 
   if (!item) {
     return (
@@ -359,6 +372,11 @@ function CandidateDetailPanel({
             </button>
             <button type="button" onClick={() => setIsExecuting(false)}>Cancel</button>
           </div>
+          {chartLoading ? (
+            <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart…</div>
+          ) : (
+            <CandleChart candles={candles} entryPrice={entryPrice} stopPrice={stopValue > 0 ? stopValue : undefined} height={220} />
+          )}
         </form>
       ) : (
         <div className="detailStack">
@@ -386,6 +404,11 @@ function CandidateDetailPanel({
             <span className="label">Notes</span>
             <p>{item.notes || "-"}</p>
           </div>
+          {chartLoading ? (
+            <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart…</div>
+          ) : (
+            <CandleChart candles={candles} height={240} />
+          )}
         </div>
       )}
     </Card>
