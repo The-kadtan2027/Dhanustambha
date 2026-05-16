@@ -27,6 +27,7 @@ from scripts.analyze_signal_features import (
     compute_win_rate_spread,
     run_feature_analysis,
 )
+from scripts.calibrate_thresholds import apply_feature_filters
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -206,3 +207,51 @@ def test_run_feature_analysis_momentum_burst_scanner():
     feature_names = [r["feature"] for r in results]
     # mb_quality should be in results (categorical)
     assert "mb_quality" in feature_names
+
+
+def test_apply_feature_filters_numeric():
+    df = pd.DataFrame(
+        {
+            "gap_day_close_location_pct": [40.0, 55.0, 70.0, 80.0],
+            "return_5d": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    result = apply_feature_filters(df, ["gap_day_close_location_pct:60"])
+    assert len(result) == 2
+    assert result["gap_day_close_location_pct"].min() >= 60.0
+
+
+def test_apply_feature_filters_boolean():
+    df = pd.DataFrame(
+        {
+            "is_first_gap_in_6m": [True, False, True, False],
+            "return_5d": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    result = apply_feature_filters(df, ["is_first_gap_in_6m:True"])
+    assert len(result) == 2
+    assert result["is_first_gap_in_6m"].all()
+
+
+def test_apply_feature_filters_categorical():
+    df = pd.DataFrame(
+        {
+            "mb_quality": ["HIGH", "STANDARD", "high", "LOW"],
+            "return_5d": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    result = apply_feature_filters(df, ["mb_quality:HIGH"])
+    assert len(result) == 2
+    assert set(result["mb_quality"].str.upper()) == {"HIGH"}
+
+
+def test_apply_feature_filters_missing_column_skipped():
+    df = pd.DataFrame({"return_5d": [1.0, 2.0]})
+    result = apply_feature_filters(df, ["nonexistent_col:50"])
+    assert len(result) == 2
+
+
+def test_apply_feature_filters_none_returns_unchanged():
+    df = pd.DataFrame({"return_5d": [1.0, 2.0, 3.0]})
+    result = apply_feature_filters(df, None)
+    assert len(result) == 3

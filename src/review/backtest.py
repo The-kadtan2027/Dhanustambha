@@ -254,6 +254,7 @@ def _compute_summary_metrics(
 def _prepare_scanner_history(
     scanner_fn: ScannerFn,
     price_history: pd.DataFrame,
+    benchmark_history: Optional[pd.DataFrame] = None,
 ) -> object:
     """Precompute reusable scanner history structures for calibration runs."""
     if scanner_fn is detect_momentum_burst:
@@ -268,7 +269,20 @@ def _prepare_scanner_history(
         prepared = prepare_episodic_pivot_features(price_history)
         return prepared.reset_index(drop=True)
     if scanner_fn is detect_trend_intensity:
-        prepared = prepare_trend_intensity_features(price_history)
+        preparation_history = price_history
+        if benchmark_history is not None and not benchmark_history.empty:
+            preparation_history = pd.concat(
+                [price_history, benchmark_history],
+                ignore_index=True,
+            )
+        else:
+            local_benchmark = _build_local_benchmark_proxy(price_history)
+            if not local_benchmark.empty:
+                preparation_history = pd.concat(
+                    [price_history, local_benchmark],
+                    ignore_index=True,
+                )
+        prepared = prepare_trend_intensity_features(preparation_history)
         if prepared.empty:
             return {}
         return {
@@ -281,9 +295,10 @@ def _prepare_scanner_history(
 def prepare_scanner_history(
     scanner_fn: ScannerFn,
     price_history: pd.DataFrame,
+    benchmark_history: Optional[pd.DataFrame] = None,
 ) -> object:
     """Return reusable precomputed scanner history for calibration runs."""
-    return _prepare_scanner_history(scanner_fn, price_history)
+    return _prepare_scanner_history(scanner_fn, price_history, benchmark_history)
 
 
 def get_scanner(name: str) -> ScannerFn:
@@ -337,17 +352,6 @@ def run_backtest(
             n_signals=0,
         )
 
-    price_history["date"] = pd.to_datetime(price_history["date"])
-    price_history = price_history.sort_values(["symbol", "date"]).reset_index(drop=True)
-    if prepared_history_by_date is None:
-        prepared_history_by_date = _prepare_scanner_history(scanner_fn, price_history)
-
-    symbol_frames = {
-        symbol: group.reset_index(drop=True)
-        for symbol, group in price_history.groupby("symbol")
-    }
-    symbol_index_lookup = {symbol: _build_index_lookup(group) for symbol, group in symbol_frames.items()}
-
     if benchmark_history is None:
         end_with_horizon = (
             pd.Timestamp(end_date) + pd.tseries.offsets.BDay(max(horizons))
@@ -360,10 +364,26 @@ def run_backtest(
     else:
         benchmark_history = benchmark_history.copy()
 
+    price_history["date"] = pd.to_datetime(price_history["date"])
+    price_history = price_history.sort_values(["symbol", "date"]).reset_index(drop=True)
+    if not benchmark_history.empty:
+        benchmark_history["date"] = pd.to_datetime(benchmark_history["date"])
+    if prepared_history_by_date is None:
+        prepared_history_by_date = _prepare_scanner_history(
+            scanner_fn,
+            price_history,
+            benchmark_history,
+        )
+
+    symbol_frames = {
+        symbol: group.reset_index(drop=True)
+        for symbol, group in price_history.groupby("symbol")
+    }
+    symbol_index_lookup = {symbol: _build_index_lookup(group) for symbol, group in symbol_frames.items()}
+
     benchmark_frame = pd.DataFrame()
     benchmark_index_lookup: Dict[pd.Timestamp, int] = {}
     if not benchmark_history.empty:
-        benchmark_history["date"] = pd.to_datetime(benchmark_history["date"])
         benchmark_frame = _select_benchmark_history(benchmark_history)
     if benchmark_frame.empty:
         benchmark_frame = _build_local_benchmark_proxy(price_history)

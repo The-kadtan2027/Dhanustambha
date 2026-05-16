@@ -1,5 +1,10 @@
 # Implementation Plan — Operationalization + Research-Grade Backtesting
 
+> **Status note (2026-05-07):** This plan is historical context for Streams A-F.
+> The active implementation plan is now Phase 5 / Stream G:
+> `docs/superpowers/plans/2026-05-07-scanner-winrate-rd-plan.md`.
+> Use `docs/plans/PROGRESS.md` for the current handoff before continuing work.
+
 Covers the completed implementation streams plus the next research-driven calibration
 stream. Phase 1 is already fully implemented and validated, and the current focus is
 improving the quality of scanner research before making further default-threshold changes.

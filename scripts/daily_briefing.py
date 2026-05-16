@@ -102,19 +102,31 @@ def _print_setup_table(title: str, candidates: pd.DataFrame) -> None:
         )
 
     print(
-        f"  {'':3s}{'SYMBOL':<12} {'MATCHED_SETUPS':<36} "
-        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8}"
+        f"  {'':3s}{'SYMBOL':<12} {'MATCHED_SETUPS':<28} "
+        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8} {'STOP_LOSS':^14}"
     )
-    print(f"  {'-' * 82}")
+    print(f"  {'-' * 88}")
     for _, row in candidates.iterrows():
         matched_setups = row.get("matched_setups", row.get("setup_type", ""))
         tier_label = ""
         if tier_col and row.get(tier_col) in high_values:
             tier_label = "* "
+            
+        # Add Stop Loss recommendations
+        stop_pct = 2.5 # default fallback
+        if "EPISODIC" in str(matched_setups).upper():
+            stop_pct = config.TRADE_EP_STOP_PCT
+        elif "MOMENTUM" in str(matched_setups).upper():
+            stop_pct = config.TRADE_MB_STOP_PCT
+        elif "TREND" in str(matched_setups).upper():
+            stop_pct = config.TRADE_TI_STOP_PCT
+            
+        stop_val = max(0, row['close'] * (1 - (stop_pct / 100)))
+
         print(
-            f"  {tier_label:3s}{row['symbol']:<12} {matched_setups:<36} "
+            f"  {tier_label:3s}{row['symbol']:<12} {matched_setups:<28} "
             f"{row['pct_change']:>+6.1f}% {row['volume_ratio']:>9.1f}x "
-            f"{row['close']:>8.2f}"
+            f"{row['close']:>8.2f} {stop_val:>8.2f} ({stop_pct:3.1f}%)"
         )
 
 
@@ -231,10 +243,10 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
     print(f"  TOP CANDIDATES ({len(watchlist)})")
     print(f"  {'-' * 45}")
     print(
-        f"  {'':3s}{'SYMBOL':<12} {'SETUP':<18} {'MATCHED_SETUPS':<36} "
-        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8}"
+        f"  {'':3s}{'SYMBOL':<12} {'SETUP':<14} {'MATCHED_SETUPS':<22} "
+        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8} {'STOP_LOSS':^14}"
     )
-    print(f"  {'-' * 101}")
+    print(f"  {'-' * 105}")
     for _, row in watchlist.iterrows():
         matched_setups = row.get("matched_setups", row["setup_type"])
         # Show quality/tier marker for high-conviction candidates
@@ -243,11 +255,23 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
             tier_label = "* "
         elif row.get("mb_quality") == "HIGH":
             tier_label = "* "
+            
+        # Add Stop Loss recommendations
+        stop_pct = 2.5 # default fallback
+        if "EPISODIC" in str(matched_setups).upper() or "EP_TIER" in row:
+            stop_pct = config.TRADE_EP_STOP_PCT
+        elif "MOMENTUM" in str(matched_setups).upper() or "MB_QUALITY" in row:
+            stop_pct = config.TRADE_MB_STOP_PCT
+        elif "TREND" in str(matched_setups).upper():
+            stop_pct = config.TRADE_TI_STOP_PCT
+            
+        stop_val = max(0, row['close'] * (1 - (stop_pct / 100)))
+
         print(
-            f"  {tier_label:3s}{row['symbol']:<12} {row['setup_type']:<18} "
-            f"{matched_setups:<36} "
+            f"  {tier_label:3s}{row['symbol']:<12} {row['setup_type']:<14} "
+            f"{matched_setups:<22} "
             f"{row['pct_change']:>+6.1f}% {row['volume_ratio']:>9.1f}x "
-            f"{row['close']:>8.2f}"
+            f"{row['close']:>8.2f} {stop_val:>8.2f} ({stop_pct:3.1f}%)"
         )
 
     _print_setup_table("TOP MOMENTUM BURST", mb_results)

@@ -306,6 +306,19 @@ def get_breadth(date: Optional[str] = None) -> Dict[str, object]:
         conn.close()
 
 
+def get_breadth_dates() -> List[str]:
+    """Return stored breadth dates newest first."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT date FROM breadth ORDER BY date DESC").fetchall()
+        return [str(row[0]) for row in rows]
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to fetch breadth dates: %s", exc)
+        raise
+    finally:
+        conn.close()
+
+
 def get_breadth_range(start_date: str, end_date: str) -> pd.DataFrame:
     """Return breadth rows between two dates inclusive as a date-sorted DataFrame."""
     conn = get_connection()
@@ -325,6 +338,55 @@ def get_breadth_range(start_date: str, end_date: str) -> pd.DataFrame:
         return df
     except sqlite3.OperationalError as exc:
         logger.error("Failed to fetch breadth range %s to %s: %s", start_date, end_date, exc)
+        raise
+    finally:
+        conn.close()
+
+
+def get_watchlist(date: Optional[str] = None) -> pd.DataFrame:
+    """Return watchlist rows for one date, or the latest saved date if omitted."""
+    conn = get_connection()
+    try:
+        if date is None:
+            latest_row = conn.execute("SELECT MAX(date) FROM watchlist").fetchone()
+            if latest_row is None or latest_row[0] is None:
+                return pd.DataFrame()
+            date = str(latest_row[0])
+
+        df = pd.read_sql(
+            """
+            SELECT DISTINCT
+                date,
+                symbol,
+                setup_type,
+                score,
+                pct_change,
+                volume_ratio,
+                close,
+                notes
+            FROM watchlist
+            WHERE date = ?
+            ORDER BY score DESC
+            """,
+            conn,
+            params=(date,),
+        )
+        return df
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to fetch watchlist for %s: %s", date or "latest", exc)
+        raise
+    finally:
+        conn.close()
+
+
+def get_latest_watchlist_date() -> Optional[str]:
+    """Return the latest date that has saved watchlist rows."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT MAX(date) FROM watchlist").fetchone()
+        return str(row[0]) if row is not None and row[0] is not None else None
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to fetch latest watchlist date: %s", exc)
         raise
     finally:
         conn.close()

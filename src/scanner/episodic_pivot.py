@@ -114,6 +114,7 @@ def detect_episodic_pivot(
     min_gap_pct = min_gap_pct or config.EP_MIN_GAP_PCT
     min_gap_vol_ratio = min_gap_vol_ratio or config.EP_MIN_GAP_VOLUME_RATIO
     max_days_since_gap = max_days_since_gap or config.EP_MAX_DAYS_SINCE_GAP
+    max_gap_vol_ratio = config.EP_MAX_GAP_VOLUME_RATIO
 
     if {
         "gap_pct",
@@ -160,7 +161,11 @@ def detect_episodic_pivot(
             if pd.isna(gap_row.get("gap_pct")) or pd.isna(gap_row.get("gap_vol_ratio")):
                 continue
 
-            if gap_row["gap_pct"] >= min_gap_pct and gap_row["gap_vol_ratio"] >= min_gap_vol_ratio:
+            if (
+                gap_row["gap_pct"] >= min_gap_pct
+                and gap_row["gap_vol_ratio"] >= min_gap_vol_ratio
+                and (max_gap_vol_ratio <= 0 or gap_row["gap_vol_ratio"] <= max_gap_vol_ratio)
+            ):
                 if today["close"] >= gap_row["open"]:
                     gap_position = window_start + idx
                     days_since = len(ordered) - 1 - gap_position

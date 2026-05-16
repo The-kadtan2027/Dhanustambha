@@ -24,14 +24,14 @@ def test_position_sizer_normal_case():
 
     result = calculate_position_size(
         account_size=500_000,
-        entry_price=100.0,
-        stop_price=95.0,
+        entry_price=10.0,
+        stop_price=5.0,
         market_verdict="OFFENSIVE",
     )
 
     assert result is not None
-    assert result["shares"] == 500.0
-    assert result["risk_amount"] == 2500.0
+    assert result["shares"] == 2500.0
+    assert result["risk_amount"] == 12500.0
 
 
 def test_position_sizer_defensive_halves_size():
@@ -40,13 +40,13 @@ def test_position_sizer_defensive_halves_size():
 
     result = calculate_position_size(
         account_size=500_000,
-        entry_price=100.0,
-        stop_price=95.0,
+        entry_price=10.0,
+        stop_price=5.0,
         market_verdict="DEFENSIVE",
     )
 
     assert result is not None
-    assert result["shares"] == 250.0
+    assert result["shares"] == 1250.0
 
 
 def test_position_sizer_rejects_stop_above_entry():
@@ -73,7 +73,7 @@ def test_position_sizer_caps_at_max_position_pct():
     )
 
     assert result is not None
-    assert result["position_value"] <= 50_000.0
+    assert result["position_value"] <= 500_000 * config.TRADE_MAX_POSITION_PCT
 
 
 def test_trade_log_open_close_and_summary(tmp_db):
@@ -116,7 +116,7 @@ def test_trade_log_open_close_and_summary(tmp_db):
 
 
 def test_build_open_trade_status_uses_latest_close(tmp_db):
-    """Open trade status should include current close and unrealized P&L."""
+    """Open trade status should include current close, unrealized P&L, and action fields."""
     from src.ingestion.store import init_db, upsert_ohlcv
     from src.trade.log import build_open_trade_status, open_trade
 
@@ -158,3 +158,92 @@ def test_build_open_trade_status_uses_latest_close(tmp_db):
     assert len(status_df) == 1
     assert float(status_df.iloc[0]["current_close"]) == 104.0
     assert float(status_df.iloc[0]["unrealized_pnl"]) == 40.0
+    assert float(status_df.iloc[0]["pct_gain"]) == 4.0
+    assert int(status_df.iloc[0]["days_held"]) == 1
+    assert status_df.iloc[0]["action_required"] == "NONE"
+
+
+def test_open_trade_status_flags_breakeven_trail(tmp_db):
+    """A trade up at least 5% with an underwater stop should request breakeven trail."""
+    from src.ingestion.store import init_db, upsert_ohlcv
+    from src.trade.log import build_open_trade_status, open_trade, update_stop_price
+
+    init_db()
+    upsert_ohlcv(
+        [
+            {
+                "symbol": "RELIANCE",
+                "date": "2026-04-10",
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 500000,
+            },
+            {
+                "symbol": "RELIANCE",
+                "date": "2026-04-13",
+                "open": 101.0,
+                "high": 107.0,
+                "low": 100.0,
+                "close": 106.0,
+                "volume": 600000,
+            },
+        ]
+    )
+    trade_id = open_trade(
+        symbol="RELIANCE",
+        setup_type="EP",
+        entry_date="2026-04-10",
+        entry_price=100.0,
+        shares=10,
+        stop_price=96.0,
+    )
+
+    status_df = build_open_trade_status(as_of_date="2026-04-13")
+
+    assert float(status_df.iloc[0]["pct_gain"]) == 6.0
+    assert status_df.iloc[0]["action_required"] == "TRAIL_TO_BREAKEVEN"
+
+    update_result = update_stop_price(trade_id=trade_id, stop_price=100.0)
+    assert update_result["old_stop_price"] == 96.0
+    assert update_result["new_stop_price"] == 100.0
+
+    updated_status = build_open_trade_status(as_of_date="2026-04-13")
+    assert float(updated_status.iloc[0]["stop_price"]) == 100.0
+    assert updated_status.iloc[0]["action_required"] == "NONE"
+
+
+def test_open_trade_status_flags_time_exit_after_twenty_trading_days(tmp_db):
+    """A trade held for 20 stored trading sessions should request a time exit."""
+    from src.ingestion.store import init_db, upsert_ohlcv
+    from src.trade.log import build_open_trade_status, open_trade
+
+    init_db()
+    rows = []
+    for day in range(1, 22):
+        rows.append(
+            {
+                "symbol": "TCS",
+                "date": f"2026-04-{day:02d}",
+                "open": 100.0,
+                "high": 103.0,
+                "low": 99.0,
+                "close": 102.0,
+                "volume": 500000,
+            }
+        )
+    upsert_ohlcv(rows)
+    open_trade(
+        symbol="TCS",
+        setup_type="TREND_INTENSITY",
+        entry_date="2026-04-01",
+        entry_price=100.0,
+        shares=10,
+        stop_price=98.0,
+    )
+
+    status_df = build_open_trade_status(as_of_date="2026-04-21")
+
+    assert int(status_df.iloc[0]["days_held"]) == 20
+    assert status_df.iloc[0]["action_required"] == "TIME_EXIT"

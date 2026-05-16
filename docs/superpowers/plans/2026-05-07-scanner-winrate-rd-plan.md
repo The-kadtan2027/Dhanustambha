@@ -10,6 +10,36 @@
 
 ---
 
+## Current Status - 2026-05-07
+
+This is the active Phase 5 / Stream G plan. Phase 4 dashboard work is complete through F4; dashboard live validation continues in parallel but is no longer the formal active implementation plan.
+
+Completed or already implemented:
+
+- Task 1: `scripts/analyze_signal_features.py` exists and performs feature bucket analysis for EP/MB/TI signal CSVs.
+- Task 2: feature-analysis tests exist in `tests/test_analyze_signal_features.py`.
+- Task 3: EP feature analysis was run and findings were recorded in `data/research/FINDINGS.md`.
+- Task 4: `scripts/calibrate_thresholds.py` supports `--feature-filters`, including numeric, range/comparison, boolean, and categorical filters.
+- Task 5: EP G2 validation was extended through compact checks, 2025-H2 out-of-sample validation, and rolling full-2025 validation.
+- Task 6 partial: a configurable EP quality filter exists as `EP_MAX_GAP_VOLUME_RATIO = 0.0`; it is intentionally disabled by default.
+- Task 7: MB HIGH-tier smoke validation has been run and recorded in `data/research/FINDINGS.md`; it did not pass the hardening gate.
+- Task 10: Trend Intensity exposes `relative_strength_vs_benchmark_3m`; benchmark-history preparation was fixed so the field is populated in calibration, and a 10-set RS-band smoke is recorded in `data/research/FINDINGS.md`.
+
+Current research decision:
+
+- `prior_65d_weakness_pct>=37` was rejected for live promotion after 2025-H2 out-of-sample failure.
+- `gap_vol_ratio<=4.9` survived rolling validation and improved full-2025 EP hit rate/alpha, but H2 OFFENSIVE count was too small for a hard live default.
+- Do not hard-code `gap_vol_ratio<=4.9` into live EP detection. Use the disabled-by-default `EP_MAX_GAP_VOLUME_RATIO` setting for observation only.
+
+Next work:
+
+1. Audit the implemented Stream G files against this plan and run focused verification.
+2. Run full-grid or rolling TI RS-band validation for `relative_strength_vs_benchmark_3m:2.4..6.7` and possibly an OFFENSIVE-focused `3.9..6.7` cut.
+3. Decide whether MB needs a fuller G2 validation run before any reference-only demotion.
+4. Proceed to Task 9 only after `FINDINGS.md` records a scanner-level demotion decision.
+
+---
+
 ## File Map
 
 | File | Action | Purpose |
@@ -1089,20 +1119,17 @@ git commit -m "docs(research): TI RS feature analysis findings from G1 run"
 ## Self-Review
 
 **Spec coverage:**
-- G1 feature analysis script → Task 1 ✅
-- Tests for analysis script → Task 2 ✅
-- EP feature analysis research run → Task 3 ✅
-- Extended calibration `--feature-filters` → Task 4 ✅
-- Full EP extended calibration run → Task 5 ✅
-- EP live filter promotion → Task 6 ✅
-- MB feature analysis + HIGH tier validation → Task 7 ✅
-- MB HIGH tier hardening → Task 8 ✅
-- Reference-only demotion for scanners without edge → Task 9 ✅
-- TI RS feature → Task 10 ✅
+- Task 1 - G1 feature analysis script: complete.
+- Task 2 - tests for analysis script: complete.
+- Task 3 - EP feature analysis research run: complete.
+- Task 4 - extended calibration `--feature-filters`: complete.
+- Task 5 - full EP extended calibration / OOS validation: complete for the current EP candidates.
+- Task 6 - EP live filter promotion: partially complete. `EP_MAX_GAP_VOLUME_RATIO` exists, but remains disabled by default because the evidence supports observation, not a live default.
+- Task 7 - MB feature analysis + HIGH-tier validation: complete for a 10-set smoke; the HIGH-tier hardening gate was rejected from that evidence.
+- Task 8 - MB HIGH-tier hardening: not started; current Task 7 evidence does not justify running it.
+- Task 9 - reference-only demotion: not started; only run for scanners that fail their G2 gate.
+- Task 10 - TI RS feature: complete for a 10-set smoke. RS is promising as a bounded band, but not promotable until full-grid or rolling validation passes.
 
-**Placeholder scan:** All tasks have concrete code. Gate conditions in Tasks 5, 7, and 8 have explicit pass/fail criteria. Task 9 depends on prior tasks' outcomes — the agent should check FINDINGS.md for the list of scanners to demote.
+**Placeholder scan:** All planned tasks have concrete code steps. Gate conditions in Tasks 5, 7, and 8 remain binding. Do not proceed to Task 8 or Task 9 until `FINDINGS.md` records the Task 7 decision.
 
-**Type consistency:** `apply_feature_filters()` returns `pd.DataFrame`, used as `filtered_signals` → passed to `signal_frames.append()` ✅. `run_feature_analysis()` returns `list[dict]` ✅. `merge_and_rank()` now returns a tuple `(export_df, reference_df)` — callers in `daily_briefing.py` must be updated to unpack the tuple (this is flagged in Task 9 Step 4).
-
-> [!IMPORTANT]
-> `merge_and_rank()` return signature changes in Task 9. Any existing caller that expects a single DataFrame must be updated. Check all callers before committing Task 9.
+**Type consistency:** `apply_feature_filters()` returns `pd.DataFrame`, used as `filtered_signals` before calibration output aggregation. `run_feature_analysis()` returns `list[dict]`. If Task 9 is implemented, check every caller before changing `merge_and_rank()` return shape.

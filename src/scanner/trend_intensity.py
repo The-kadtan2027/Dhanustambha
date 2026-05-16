@@ -132,6 +132,7 @@ def detect_trend_intensity(
     min_days_above_ma50: Optional[int] = None,
     min_vol_ratio: Optional[float] = None,
     max_atr_pct: Optional[float] = None,
+    max_pullback_depth: Optional[float] = None,
 ) -> pd.DataFrame:
     """Detect quiet uptrends breaking to fresh highs on increased volume."""
     high_lookback = high_lookback or config.TI_HIGH_LOOKBACK_DAYS
@@ -139,6 +140,7 @@ def detect_trend_intensity(
     min_days_above_ma50 = min_days_above_ma50 or config.TI_MIN_DAYS_ABOVE_MA50
     min_vol_ratio = min_vol_ratio or config.TI_MIN_VOLUME_RATIO
     max_atr_pct = max_atr_pct or config.TI_MAX_ATR_PCT
+    max_pullback_depth = max_pullback_depth or config.TI_MAX_PULLBACK_DEPTH_PCT
 
     if {
         "ma50",
@@ -147,6 +149,7 @@ def detect_trend_intensity(
         "atr_pct",
         "vol_ratio",
         "trend_efficiency_ratio",
+        "pullback_depth_20d",
     }.issubset(df.columns):
         prepared = df.copy()
     else:
@@ -184,6 +187,7 @@ def detect_trend_intensity(
         & latest_rows["close"].gt(latest_rows["lookback_high"])
         & latest_rows["vol_ratio"].ge(min_vol_ratio)
         & latest_rows["atr_pct"].le(max_atr_pct)
+        & latest_rows["pullback_depth_20d"].le(max_pullback_depth)
     ].copy()
     filtered["required_days_above"] = filtered["valid_ma50_count_50d"].apply(
         lambda count: min(min_days_above_ma50, int(count))

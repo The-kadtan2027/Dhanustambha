@@ -11,6 +11,7 @@ import config
 from src.ingestion.store import (
     get_breadth,
     get_latest_close,
+    get_stored_dates,
     get_trade,
     get_trades,
     save_trade,
@@ -29,7 +30,10 @@ def get_market_verdict(as_of_date: Optional[str] = None) -> str:
     if verdict in {"OFFENSIVE", "DEFENSIVE", "AVOID"}:
         return verdict
 
-    logger.warning("No breadth verdict found for %s; defaulting to OFFENSIVE", as_of_date or "latest")
+    logger.warning(
+        "No breadth verdict found for %s; defaulting to OFFENSIVE",
+        as_of_date or "latest",
+    )
     return "OFFENSIVE"
 
 
@@ -148,8 +152,55 @@ def close_trade(
     }
 
 
+def update_stop_price(trade_id: int, stop_price: float) -> Dict[str, object]:
+    """Update the stop price for an open trade and return the updated details."""
+    trade = get_trade(trade_id)
+    if not trade:
+        raise ValueError(f"Trade {trade_id} does not exist.")
+
+    if trade.get("status") != config.TRADE_DEFAULT_STATUS_OPEN:
+        raise ValueError(f"Trade {trade_id} is not open.")
+
+    if stop_price <= 0:
+        raise ValueError("Stop price must be positive.")
+
+    update_trade(trade_id, {"stop_price": float(stop_price)})
+    return {
+        "trade_id": trade_id,
+        "symbol": trade["symbol"],
+        "old_stop_price": float(trade["stop_price"]),
+        "new_stop_price": float(stop_price),
+    }
+
+
+def count_trading_days_held(entry_date: str, as_of_date: Optional[str] = None) -> int:
+    """Count stored NSE trading dates after entry date through the as-of date."""
+    stored_dates = get_stored_dates(start_date=entry_date, end_date=as_of_date)
+    return len([stored_date for stored_date in stored_dates if stored_date > entry_date])
+
+
+def determine_action_required(
+    entry_price: float,
+    stop_price: float,
+    pct_gain: Optional[float],
+    days_held: int,
+) -> str:
+    """Return the trade-management action required by current gain and holding age."""
+    if days_held >= config.TRADE_TIME_EXIT_DAYS:
+        return "TIME_EXIT"
+
+    if (
+        pct_gain is not None
+        and pct_gain >= config.TRADE_BREAKEVEN_TRIGGER_PCT
+        and stop_price < entry_price
+    ):
+        return "TRAIL_TO_BREAKEVEN"
+
+    return "NONE"
+
+
 def build_open_trade_status(as_of_date: Optional[str] = None) -> pd.DataFrame:
-    """Return open trades augmented with latest-close unrealized P&L when available."""
+    """Return open trades augmented with price, P&L, holding age, and action flags."""
     open_trades = get_open_trades()
     if open_trades.empty:
         return open_trades
@@ -157,12 +208,16 @@ def build_open_trade_status(as_of_date: Optional[str] = None) -> pd.DataFrame:
     status_df = open_trades.copy()
     current_prices = []
     unrealized_pnls = []
+    pct_gains = []
+    days_held_values = []
+    actions_required = []
 
     for _, row in status_df.iterrows():
         latest_close = get_latest_close(str(row["symbol"]), up_to_date=as_of_date)
         current_prices.append(latest_close)
         if latest_close is None:
             unrealized_pnls.append(None)
+            pct_gain = None
         else:
             unrealized_pnls.append(
                 round(
@@ -174,9 +229,32 @@ def build_open_trade_status(as_of_date: Optional[str] = None) -> pd.DataFrame:
                     2,
                 )
             )
+            pct_gain = round(
+                (
+                    (float(latest_close) - float(row["entry_price"]))
+                    / float(row["entry_price"])
+                )
+                * 100,
+                2,
+            )
+
+        days_held = count_trading_days_held(str(row["entry_date"]), as_of_date=as_of_date)
+        pct_gains.append(pct_gain)
+        days_held_values.append(days_held)
+        actions_required.append(
+            determine_action_required(
+                entry_price=float(row["entry_price"]),
+                stop_price=float(row["stop_price"]),
+                pct_gain=pct_gain,
+                days_held=days_held,
+            )
+        )
 
     status_df["current_close"] = current_prices
     status_df["unrealized_pnl"] = unrealized_pnls
+    status_df["pct_gain"] = pct_gains
+    status_df["days_held"] = days_held_values
+    status_df["action_required"] = actions_required
     return status_df
 
 

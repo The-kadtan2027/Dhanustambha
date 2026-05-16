@@ -37,7 +37,7 @@ MB_MIN_VOLUME_RATIO = 1.5    # Today's volume / 20d avg volume
 MB_LOOKBACK_DAYS = 3         # Look back N days for the % change calculation
 MB_MIN_PRICE = 50.0          # Minimum price ₹ to exclude penny stocks
 MB_MIN_AVG_VOLUME = 200_000  # Minimum 20d average daily volume (liquidity filter)
-MB_MAX_PRIOR_RUN = 15.0      # Skip stocks already up >this% in the prior 10 days
+MB_MAX_PRIOR_RUN = -2.3      # Skip stocks already up >this% in the prior 10 days (G2 validation limit)
 
 # MB Quality filters — additive labels, not detection gates
 # Calibration: combo G = 59.7% wr, 1.69 MFE/MAE, 1.6% fail-by-3d (vs 50.6% baseline)
@@ -52,6 +52,7 @@ MB_QUALITY_MIN_DIST_20D_HIGH = 0.0   # Must be at or above 20-day high (breakout
 EP_MIN_GAP_PCT = 5.0           # Loosened live observation candidate after sparse recent sessions
 EP_MIN_GAP_VOLUME_RATIO = 3.0  # Shortlisted live candidate from 2025 H1 NSE calibration
 EP_MAX_DAYS_SINCE_GAP = 2      # Shortlisted live candidate from 2025 H1 NSE calibration
+EP_MAX_GAP_VOLUME_RATIO = 0.0  # Disabled by default; set to 4.9 to enable research quality filter
 
 # Tier A+ — high-conviction subset (calibration: 61% wr, 1.50 MFE/MAE, 95 signals/2yr)
 EP_TIER_A_MIN_GAP_PCT = 8.0
@@ -66,13 +67,19 @@ TI_MA50_TREND_LOOKBACK = 20   # MA50 must be rising vs N days ago
 TI_MIN_DAYS_ABOVE_MA50 = 40   # Stock must be above MA50 for >= N of last 50 days
 TI_MIN_VOLUME_RATIO = 1.3     # Breakout-day volume / 20d avg volume
 TI_MAX_ATR_PCT = 0.05         # ATR(14)/close < this → "quiet" low-volatility trend
+TI_MAX_PULLBACK_DEPTH_PCT = 16.0 # Max pullback depth within recent 20 days
 
 # ---------------------------------------------------------------------------
 # Trade management (Phase 2)
 # ---------------------------------------------------------------------------
 # Set ACCOUNT_SIZE to your actual trading capital in INR before using the sizer.
 ACCOUNT_SIZE = 100_000          # ₹5 lakh default — override per your actual capital
-TRADE_RISK_PCT = 0.025           # Risk 1% of account per trade
+TRADE_RISK_PCT = 0.025          # Risk 2.5% of account per trade as per user preference constraint
+# Validated fixed % stop losses per setup type (from MAE optimization)
+TRADE_EP_STOP_PCT = 4.0         # 4.0% for Episodic Pivot (winners routinely dip 3-4%)
+TRADE_MB_STOP_PCT = 2.5         # 2.5% for Momentum Burst
+TRADE_TI_STOP_PCT = 1.5         # 1.5% for Trend Intensity
+
 TRADE_MAX_POSITION_PCT = 0.25   # No single position > 10% of account
 TRADE_MAX_OPEN = 5              # Max 5 concurrent open trades
 TRADE_DEFENSIVE_SIZE_FACTOR = 0.5  # Halve position size in DEFENSIVE market conditions
@@ -80,6 +87,8 @@ TRADE_DEFAULT_STATUS_OPEN = "OPEN"
 TRADE_STATUS_CLOSED_WIN = "CLOSED_WIN"
 TRADE_STATUS_CLOSED_LOSS = "CLOSED_LOSS"
 TRADE_STATUS_CLOSED_BE = "CLOSED_BE"
+TRADE_BREAKEVEN_TRIGGER_PCT = 5.0
+TRADE_TIME_EXIT_DAYS = 20
 
 BACKTEST_FORWARD_DAYS = (3, 5, 10, 20)
 BACKTEST_OUTPUT_DIR = os.path.join(BASE_DIR, "data", "calibration")

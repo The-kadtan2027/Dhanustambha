@@ -22,6 +22,7 @@ from src.trade.log import (
     get_open_trades,
     open_trade,
     summarize_closed_trades,
+    update_stop_price,
 )
 from src.trade.sizer import calculate_position_size
 
@@ -126,7 +127,8 @@ def handle_close() -> int:
         print("No open trades to close.")
         return 0
 
-    print(format_table(open_positions[["id", "symbol", "setup_type", "entry_date", "entry_price", "shares"]]))
+    close_columns = ["id", "symbol", "setup_type", "entry_date", "entry_price", "shares"]
+    print(format_table(open_positions[close_columns]))
     trade_id = prompt_int("Trade ID to close")
     exit_date = prompt_text("Exit date", date.today().isoformat())
     exit_price = prompt_float("Exit price")
@@ -163,8 +165,49 @@ def handle_status() -> int:
         "stop_price",
         "current_close",
         "unrealized_pnl",
+        "pct_gain",
+        "days_held",
+        "action_required",
     ]
-    print(format_table(status_df[columns]))
+    display_df = status_df[columns].copy()
+    money_columns = ["entry_price", "stop_price", "current_close", "unrealized_pnl", "pct_gain"]
+    for column in money_columns:
+        display_df[column] = display_df[column].map(
+            lambda value: "" if pd.isna(value) else f"{float(value):.2f}"
+        )
+    display_df["days_held"] = display_df["days_held"].astype(int)
+
+    print(format_table(display_df))
+
+    actions = status_df[status_df["action_required"] != "NONE"]
+    if not actions.empty:
+        print("\nAction required")
+        for _, row in actions.iterrows():
+            gain_text = "n/a" if pd.isna(row["pct_gain"]) else f"{float(row['pct_gain']):.2f}%"
+            print(
+                f"  Trade {int(row['id'])} {row['symbol']}: {row['action_required']} "
+                f"(gain {gain_text}, held {int(row['days_held'])} trading days)"
+            )
+    return 0
+
+
+def handle_update() -> int:
+    """Update the stop price for an open trade."""
+    open_positions = get_open_trades()
+    if open_positions.empty:
+        print("No open trades to update.")
+        return 0
+
+    update_columns = ["id", "symbol", "setup_type", "entry_date", "entry_price", "stop_price"]
+    print(format_table(open_positions[update_columns]))
+    trade_id = prompt_int("Trade ID to update")
+    stop_price = prompt_float("New stop price")
+
+    result = update_stop_price(trade_id=trade_id, stop_price=float(stop_price))
+    print("\nStop updated")
+    print(f"  Symbol:    {result['symbol']}")
+    print(f"  Old stop:  INR {result['old_stop_price']:.2f}")
+    print(f"  New stop:  INR {result['new_stop_price']:.2f}")
     return 0
 
 
@@ -189,6 +232,7 @@ def main() -> int:
     subparsers.add_parser("open", help="Open a new manual trade")
     subparsers.add_parser("close", help="Close an existing trade")
     subparsers.add_parser("status", help="Show open trade status")
+    subparsers.add_parser("update", help="Update an open trade stop price")
     subparsers.add_parser("summary", help="Show closed trade summary")
 
     args = parser.parse_args()
@@ -198,6 +242,8 @@ def main() -> int:
         return handle_close()
     if args.command == "status":
         return handle_status()
+    if args.command == "update":
+        return handle_update()
     if args.command == "summary":
         return handle_summary()
     return 1

@@ -18,8 +18,10 @@ import config
 from src.ingestion.store import get_breadth_range, get_ohlcv_range
 from src.ingestion.symbols import get_universe_symbols
 from src.review.backtest import (
+    BacktestResult,
     build_parameter_grid,
     get_scanner,
+    _compute_summary_metrics,
     prepare_scanner_history,
     run_backtest,
 )
@@ -55,15 +57,16 @@ def rank_calibration_results(result_df: pd.DataFrame) -> pd.DataFrame:
     ).reset_index(drop=True)
 
 
-def build_output_paths(run_date: str, scanner: str, universe: str) -> tuple[str, str]:
+def build_output_paths(run_date: str, scanner: str, universe: str, label: str | None = None) -> tuple[str, str]:
     """Return summary and signal output paths for one calibration run."""
+    base_name = label if label else f"{run_date}-{scanner}-{universe}"
     summary_path = os.path.join(
         config.BACKTEST_OUTPUT_DIR,
-        f"{run_date}-{scanner}-{universe}-summary.csv",
+        f"{base_name}-summary.csv",
     )
     signals_path = os.path.join(
         config.BACKTEST_OUTPUT_DIR,
-        f"{run_date}-{scanner}-{universe}-signals.csv",
+        f"{base_name}-signals.csv",
     )
     return summary_path, signals_path
 
@@ -84,10 +87,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip writing the full signal-level CSV and only save the ranked summary report",
     )
     parser.add_argument(
+        "--label",
+        default=None,
+        help="Optional label to override output filename",
+    )
+    parser.add_argument(
         "--max-param-sets",
         type=int,
         default=None,
         help="Optionally limit how many parameter sets to test for a fast profiling/smoke run",
+    )
+    parser.add_argument(
+        "--feature-filters",
+        nargs="*",
+        default=None,
+        metavar="FEATURE:VALUE",
+        help=(
+            "Post-filter signal rows before summary/ranking. Numeric values keep rows where "
+            "feature >= value; ranges keep rows inside feature:low..high; comparison operators "
+            "support feature<=value, feature>=value, feature<value, and feature>value; "
+            "True/False values require boolean equality; other values require case-insensitive "
+            "string equality. Example: --feature-filters gap_day_close_location_pct:48.6..54.7 "
+            "gap_vol_ratio<=4.9 mb_quality:HIGH"
+        ),
     )
     return parser
 
@@ -100,6 +122,135 @@ def limit_parameter_grid(
     if max_param_sets is None or max_param_sets <= 0:
         return grid
     return grid[:max_param_sets]
+
+
+def apply_feature_filters(
+    signals_df: pd.DataFrame,
+    feature_filters: List[str] | None,
+) -> pd.DataFrame:
+    """Return signal rows that satisfy each feature filter specification."""
+    if not feature_filters or signals_df.empty:
+        return signals_df
+
+    filtered = signals_df.copy()
+    for spec in feature_filters:
+        parsed = _parse_feature_filter_spec(spec)
+        if parsed is None:
+            continue
+        feature, operator, raw_value = parsed
+        if not feature or feature not in filtered.columns:
+            continue
+
+        if operator in {">", ">=", "<", "<="}:
+            filtered = _apply_numeric_comparison_filter(
+                filtered,
+                feature,
+                operator,
+                raw_value,
+            )
+            continue
+
+        if ".." in raw_value:
+            filtered = _apply_numeric_range_filter(filtered, feature, raw_value)
+            continue
+
+        if raw_value.lower() in {"true", "false"}:
+            expected = raw_value.lower() == "true"
+            normalized = filtered[feature]
+            if normalized.dtype != bool:
+                normalized = normalized.astype(str).str.strip().str.lower().map(
+                    {"true": True, "false": False}
+                )
+            filtered = filtered[normalized == expected]
+            continue
+
+        try:
+            threshold = float(raw_value)
+        except ValueError:
+            filtered = filtered[
+                filtered[feature].astype(str).str.strip().str.lower() == raw_value.lower()
+            ]
+            continue
+
+        numeric = pd.to_numeric(filtered[feature], errors="coerce")
+        filtered = filtered[numeric >= threshold]
+
+    return filtered.reset_index(drop=True)
+
+
+def _parse_feature_filter_spec(spec: str) -> tuple[str, str, str] | None:
+    """Parse one feature-filter spec into feature, operator, and raw value."""
+    stripped = spec.strip()
+    for operator in ("<=", ">=", "<", ">"):
+        if operator in stripped:
+            feature, raw_value = stripped.split(operator, 1)
+            return feature.strip(), operator, raw_value.strip()
+    if ":" not in stripped:
+        return None
+    feature, raw_value = stripped.split(":", 1)
+    return feature.strip(), ":", raw_value.strip()
+
+
+def _apply_numeric_comparison_filter(
+    signals_df: pd.DataFrame,
+    feature: str,
+    operator: str,
+    raw_value: str,
+) -> pd.DataFrame:
+    """Apply one numeric comparison filter to signal rows."""
+    try:
+        threshold = float(raw_value)
+    except ValueError:
+        return signals_df
+
+    numeric = pd.to_numeric(signals_df[feature], errors="coerce")
+    if operator == "<=":
+        return signals_df[numeric <= threshold]
+    if operator == "<":
+        return signals_df[numeric < threshold]
+    if operator == ">=":
+        return signals_df[numeric >= threshold]
+    return signals_df[numeric > threshold]
+
+
+def _apply_numeric_range_filter(
+    signals_df: pd.DataFrame,
+    feature: str,
+    raw_value: str,
+) -> pd.DataFrame:
+    """Apply one inclusive numeric low..high range filter to signal rows."""
+    low_raw, high_raw = raw_value.split("..", 1)
+    try:
+        low = float(low_raw)
+        high = float(high_raw)
+    except ValueError:
+        return signals_df
+
+    lower, upper = sorted((low, high))
+    numeric = pd.to_numeric(signals_df[feature], errors="coerce")
+    return signals_df[(numeric >= lower) & (numeric <= upper)]
+
+
+def build_filtered_result_row(
+    result: BacktestResult,
+    filtered_signals: pd.DataFrame,
+    feature_filters: List[str] | None,
+) -> Dict[str, object]:
+    """Return a calibration summary row whose metrics match the filtered signals."""
+    row = result.to_dict()
+    if not feature_filters:
+        return row
+
+    row["raw_n_signals"] = result.n_signals
+    row["n_signals"] = len(filtered_signals)
+    row["feature_filters"] = ";".join(feature_filters)
+    summary_metrics = _compute_summary_metrics(
+        filtered_signals,
+        config.BACKTEST_SIGNAL_HORIZONS,
+        config.BACKTEST_EXCURSION_HORIZONS,
+    )
+    row.update(summary_metrics)
+    return row
 
 
 def main() -> int:
@@ -127,7 +278,11 @@ def main() -> int:
         symbols=config.BACKTEST_BENCHMARK_CANDIDATES,
     )
     breadth_history = get_breadth_range(args.start_date, args.end_date)
-    prepared_history_by_date = prepare_scanner_history(scanner_fn, price_history)
+    prepared_history_by_date = prepare_scanner_history(
+        scanner_fn,
+        price_history,
+        benchmark_history,
+    )
     data_load_duration = time.perf_counter() - data_load_started_at
 
     print(
@@ -159,12 +314,15 @@ def main() -> int:
         )
         param_duration = time.perf_counter() - param_started_at
         per_param_durations.append(param_duration)
-        results.append(result.to_dict())
-        if not args.summary_only and not result.signal_results.empty:
-            signal_frames.append(result.signal_results.copy())
+        filtered_signals = apply_feature_filters(result.signal_results, args.feature_filters)
+        results.append(build_filtered_result_row(result, filtered_signals, args.feature_filters))
+        if not args.summary_only and not filtered_signals.empty:
+            signal_frames.append(filtered_signals.copy())
+        filtered_n = len(filtered_signals) if args.feature_filters else result.n_signals
         print(
             f"      Completed in {_format_seconds(param_duration)} "
-            f"with {result.n_signals} signals"
+            f"with {result.n_signals} raw signals"
+            + (f" -> {filtered_n} after feature filters" if args.feature_filters else "")
         )
 
     if not results:
@@ -180,6 +338,7 @@ def main() -> int:
         date.today().isoformat(),
         args.scanner,
         args.universe,
+        args.label,
     )
 
     summary_write_started_at = time.perf_counter()
