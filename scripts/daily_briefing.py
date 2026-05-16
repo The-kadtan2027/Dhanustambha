@@ -27,6 +27,7 @@ from src.monitor.breadth import compute_breadth
 from src.monitor.verdict import compute_verdict
 from src.scanner.episodic_pivot import detect_episodic_pivot
 from src.scanner.momentum_burst import detect_momentum_burst
+from src.scanner.reentry import detect_ep_reentry
 from src.scanner.trend_intensity import detect_trend_intensity
 from src.scanner.watchlist import export_watchlist, merge_and_rank
 
@@ -226,9 +227,16 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
     mb_results = detect_momentum_burst(all_data)
     ep_results = detect_episodic_pivot(all_data)
     ti_results = detect_trend_intensity(all_data)
+    try:
+        reentry_results = detect_ep_reentry(all_data)
+    except Exception as e:
+        logger.error(f"Error running EP re-entry scanner: {e}")
+        reentry_results = pd.DataFrame()
+        
     print(f"      Momentum Burst:    {len(mb_results)} candidates")
     print(f"      Episodic Pivot:    {len(ep_results)} candidates")
     print(f"      Trend Intensity:   {len(ti_results)} candidates")
+    print(f"      EP Re-Entry:       {len(reentry_results)} candidates")
 
     print("\n[4/4] Building watchlist...")
     watchlist = merge_and_rank([mb_results, ep_results, ti_results], fetch_date)
@@ -277,6 +285,8 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
     _print_setup_table("TOP MOMENTUM BURST", mb_results)
     _print_setup_table("TOP EPISODIC PIVOT", ep_results)
     _print_setup_table("TOP TREND INTENSITY", ti_results)
+    if not reentry_results.empty:
+        _print_setup_table("⭐ EP RUNNER RE-ENTRY", reentry_results)
 
     print(f"\n  Watchlist saved -> {csv_path}")
     print(f"{'=' * 55}\n")
