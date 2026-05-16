@@ -609,7 +609,7 @@ Watchlist saved to: data/watchlists/2026-05-16.csv
 **Last updated:** 2026-05-16
 **Current phase:** Phase 6 — Paper Trading
 
-**Active plan file:** `docs/superpowers/plans/2026-05-16-aggressive-trailing-exits.md`
+**Active plan file:** `docs/superpowers/plans/2026-05-16-interactive-trade-book.md`
 
 **Research findings file:** `data/research/FINDINGS.md`
 
@@ -642,7 +642,8 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 ### Next Actions
 
 1. **Fix pre-existing test failure:** `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` fails because synthetic close series does not satisfy `MB_MAX_PRIOR_RUN = -2.3`. Fix by relaxing the synthetic fixture's prior-run or monkeypatching `MB_MAX_PRIOR_RUN` in the test.
-2. **Continue daily live monitoring** and Phase 6 paper trading validation in parallel.
+2. **Setup Interactive Trade Execution Live Testing:** Test the new `Trade Book` UI with live paper trading candidates, ensuring position sizes correctly reflect the 1% risk threshold.
+3. **Continue daily live monitoring** and Phase 6 paper trading validation in parallel.
 
 ---
 
@@ -709,6 +710,12 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 ✅ 2026-05-16 — Phase 6 Exits: Implemented 3-Tier Aggressive Trailing exit logic in `determine_action_required` 
 ✅ 2026-05-16 — Phase 6 Reentry: Built and integrated EP Re-Entry scanner into `daily_briefing.py` 
 ✅ 2026-05-16 — Phase 6 Validation: Proven Microcaps/NIFTY750 drastically decays EP win rate; NIFTY500 confirmed ideal
+✅ 2026-05-16 — Task 18: Phase 6 Paper Trading Execution (Aggressive Trailing, EP Re-Entry, NIFTY750 Research) 
+✅ 2026-05-16 — Task 19: Interactive Trade Book Implementation
+   - Added REST APIs for opening, updating stops, and closing trades (CORS-enabled)
+   - Built inline watchlist execution modal with auto-calculated 1% risk position sizing
+   - Created dedicated frontend `/trades` UI (Trade Book) for managing active positions
+   - Merged `feature/interactive-trade-book` into `main`
 ```
 
 ---
