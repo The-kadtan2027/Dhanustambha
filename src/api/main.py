@@ -17,7 +17,7 @@ from src.ingestion.store import (
     get_watchlist,
     init_db,
 )
-from src.trade.log import build_open_trade_status, summarize_closed_trades
+from src.trade.log import build_open_trade_status, summarize_closed_trades, open_trade
 
 
 @asynccontextmanager
@@ -180,6 +180,30 @@ def briefing_by_date(date: str) -> Dict[str, Any]:
         "watchlist": watchlist["items"],
         "watchlist_count": watchlist["count"],
     }
+
+
+@app.post("/trades/open")
+def api_open_trade(req: TradeOpenRequest) -> Dict[str, Any]:
+    try:
+        trade_id = open_trade(
+            symbol=req.symbol,
+            setup_type=req.setup_type,
+            entry_date=req.entry_date,
+            entry_price=req.entry_price,
+            stop_price=req.stop_price,
+            shares=req.shares,
+            notes=req.notes or "",
+            grade=req.grade or ""
+        )
+        from src.ingestion.store import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM trades WHERE id = ?", (trade_id,))
+        cols = [description[0] for description in cursor.description]
+        row = dict(zip(cols, cursor.fetchone()))
+        return row
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/trades/open")

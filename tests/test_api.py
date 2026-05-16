@@ -234,3 +234,22 @@ def test_api_allows_post_methods(api_client):
 
     assert response.status_code == 200
     assert "POST" in response.headers.get("access-control-allow-methods", "")
+
+def test_api_open_trade(api_client):
+    """API should allow opening a new trade."""
+    payload = {
+        "symbol": "FOO",
+        "setup_type": "MOMENTUM_BURST",
+        "entry_date": "2026-05-16",
+        "entry_price": 100.0,
+        "stop_price": 95.0,
+        "shares": 10,
+        "grade": "B"
+    }
+    res = api_client.post("/trades/open", json=payload)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "OPEN"
+    assert data["symbol"] == "FOO"
+    assert data["shares"] == 10
+
