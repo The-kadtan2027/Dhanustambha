@@ -17,7 +17,7 @@ from src.ingestion.store import (
     get_watchlist,
     init_db,
 )
-from src.trade.log import build_open_trade_status, summarize_closed_trades, open_trade
+from src.trade.log import build_open_trade_status, summarize_closed_trades, open_trade, update_stop_price, close_trade
 
 
 @asynccontextmanager
@@ -204,6 +204,22 @@ def api_open_trade(req: TradeOpenRequest) -> Dict[str, Any]:
         return row
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/trades/{trade_id}/update-stop")
+def api_update_stop(trade_id: int, req: TradeUpdateStopRequest) -> Dict[str, Any]:
+    try:
+        update_stop_price(trade_id, req.stop_price)
+        return {"status": "success", "id": trade_id, "new_stop": req.stop_price}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.put("/trades/{trade_id}/close")
+def api_close_trade(trade_id: int, req: TradeCloseRequest) -> Dict[str, Any]:
+    try:
+        close_trade(trade_id, req.exit_date, req.exit_price)
+        return {"status": "success", "id": trade_id}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.get("/trades/open")

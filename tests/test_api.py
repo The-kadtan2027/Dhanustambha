@@ -253,3 +253,18 @@ def test_api_open_trade(api_client):
     assert data["symbol"] == "FOO"
     assert data["shares"] == 10
 
+def test_api_update_and_close_trade(api_client):
+    """API should allow updating the stop price and closing the trade."""
+    res = api_client.post("/trades/open", json={
+        "symbol": "BAR", "setup_type": "EP", "entry_date": "2026-05-16",
+        "entry_price": 200.0, "stop_price": 190.0, "shares": 5, "grade": "A"
+    })
+    assert res.status_code == 200
+    trade_id = res.json()["id"]
+
+    res = api_client.put(f"/trades/{trade_id}/update-stop", json={"stop_price": 195.0})
+    assert res.status_code == 200
+    
+    res = api_client.put(f"/trades/{trade_id}/close", json={"exit_date": "2026-05-17", "exit_price": 210.0})
+    assert res.status_code == 200
+
