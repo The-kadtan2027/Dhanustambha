@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import CandleChart, { type Candle } from "./components/CandleChart";
+import BreadthGauges from "./components/BreadthGauges";
 import {
   Activity,
   AlertTriangle,
@@ -164,7 +165,17 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MarketPanel({ market }: { market: Market | null }) {
+function MarketPanel({ market, apiBaseUrl }: { market: Market | null; apiBaseUrl: string }) {
+  const [breadthHistory, setBreadthHistory] = useState<Market[]>([]);
+
+  useEffect(() => {
+    if (!market) return;
+    fetch(`${apiBaseUrl}/market/breadth/history?days=60`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data) => setBreadthHistory(data.items ?? []))
+      .catch(() => setBreadthHistory([]));
+  }, [market, apiBaseUrl]);
+
   if (!market) {
     return (
       <Card title="Market Monitor" icon={<Activity size={18} />}>
@@ -198,6 +209,7 @@ function MarketPanel({ market }: { market: Market | null }) {
           )}`}
         />
       </div>
+      <BreadthGauges market={market} history={breadthHistory} />
     </Card>
   );
 }
@@ -685,7 +697,7 @@ export default function DashboardClient({
       </div>
 
       <section className="grid">
-        <MarketPanel market={briefing?.market ?? null} />
+        <MarketPanel market={briefing?.market ?? null} apiBaseUrl={apiBaseUrl} />
         <TradeActionsPanel
           filter={actionFilter}
           onFilterChange={setActionFilter}
