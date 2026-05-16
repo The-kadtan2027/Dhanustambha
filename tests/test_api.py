@@ -220,3 +220,17 @@ def test_trade_actions_filters_none_actions(api_client):
     payload = response.json()
     assert payload["count"] == 1
     assert payload["items"][0]["action_required"] == "TRAIL_TO_BREAKEVEN"
+
+
+def test_api_allows_post_methods(api_client):
+    """API should allow POST methods for frontend trade execution."""
+    response = api_client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "POST" in response.headers.get("access-control-allow-methods", "")

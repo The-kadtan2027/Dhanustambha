@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import math
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from pydantic import BaseModel
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,9 +43,27 @@ app.add_middleware(
         "http://localhost:3001",
     ],
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["*"],
 )
+
+class TradeOpenRequest(BaseModel):
+    symbol: str
+    setup_type: str
+    entry_date: str
+    entry_price: float
+    stop_price: float
+    shares: int
+    notes: Optional[str] = None
+    grade: Optional[str] = None
+
+class TradeUpdateStopRequest(BaseModel):
+    stop_price: float
+
+class TradeCloseRequest(BaseModel):
+    exit_date: str
+    exit_price: float
+
 
 
 def _clean_value(value: Any) -> Any:
