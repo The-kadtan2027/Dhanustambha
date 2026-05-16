@@ -100,3 +100,36 @@ After approval:
 
 git remote add origin https://github.com/The-kadtan2027/Dhanustambha.git
 https://github.com/The-kadtan2027/
+
+
+
+Viewed main.py:1-193
+
+Here is the blueprint for **Sub-Project 1: The Interactive Trade Book**. Let's review it piece by piece to make sure it aligns with your workflow.
+
+### 1. The FastAPI Backend (Execute & Manage)
+Currently, [src/api/main.py](cci:7://file:///d:/antigravity/Dhanustambha/src/api/main.py:0:0-0:0) is fully read-only. We will build three new state-changing endpoints:
+* **`POST /trades/open`**: Accepts a ticker, setup type, entry price, stop price, and computed `shares`. It will call our core [open_trade()](cci:1://file:///d:/antigravity/Dhanustambha/src/trade/log.py:66:0-99:29) python logic to safely insert it into the SQLite DB.
+* **`PUT /trades/update`**: Accepts a Trade ID and a new stop price, returning the updated open-trade state.
+* **`PUT /trades/close`**: Accepts a Trade ID and an exit price, invoking [close_trade()](cci:1://file:///d:/antigravity/Dhanustambha/src/trade/log.py:102:0-151:5) moving it to the closed logs.
+
+### 2. The Auto-Risk Position Sizer (Settings)
+Since you chose Option A (Auto-Computed), the dashboard needs to know your total account size to safely apply your 1% risk maximum.
+* We will add an **"Account Config"** input in the top header (or a settings sidebar) of the Next.js app.
+* It will default to ₹500,000. When updated, it saves to your browser's local storage.
+* When you open the trade modal, the exact number of shares and total allocation will instantly compute based on this saved Account Size and your specified Stop Loss.
+
+### 3. The Watchlist Modal Flow (Frontend UI)
+* Beside every ticker in the Daily Briefing table, we'll place an **"Execute" (⚡)** button.
+* Clicking it opens a sleek, dark-mode overlay Modal.
+* The Modal auto-fills the `Symbol` and `Setup Type` fields. 
+* You manually type your `Entry Price` and `Stop Loss`. 
+* The **Shares to Buy** and **Total Rs. At Risk** fields animate and compute dynamically beneath it.
+* You click "Confirm Trade" which ships it to the backend `POST` endpoint, and closes the modal—your trade is officially live in the DB.
+
+### 4. Trade Book Manager Page (Frontend UI)
+* A new dedicated **Trade Book** page to replace [scripts/trade_manager.py](cci:7://file:///d:/antigravity/Dhanustambha/scripts/trade_manager.py:0:0-0:0).
+* Shows all `OPEN` trades exactly as your terminal used to. 
+* Next to each trade, inline input fields to update the Stop Loss (Action: `PUT update`) or record a Close (Action: `PUT close`).
+
+Do these four design components sound good to you? Once you approve this, I will formally write up the Spec and we can kick off implementation!
