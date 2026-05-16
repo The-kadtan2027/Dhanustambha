@@ -268,3 +268,41 @@ def test_api_update_and_close_trade(api_client):
     res = api_client.put(f"/trades/{trade_id}/close", json={"exit_date": "2026-05-17", "exit_price": 210.0})
     assert res.status_code == 200
 
+
+def test_ohlcv_endpoint_returns_candles_and_ma(api_client):
+    """OHLCV endpoint should return candle rows with MA20 and MA50 columns."""
+    import sqlite3
+
+    conn = sqlite3.connect(__import__("config").DB_PATH)
+    conn.execute(
+        "INSERT OR IGNORE INTO symbols (symbol, name, active) VALUES (?, ?, ?)",
+        ("DEMO", "Demo Stock", 1),
+    )
+    conn.commit()
+    conn.close()
+
+    from src.ingestion.store import upsert_ohlcv
+
+    rows = [
+        {
+            "symbol": "DEMO",
+            "date": f"2026-0{1 if i < 9 else 2}-{(i % 28) + 1:02d}",
+            "open": 100.0 + i,
+            "high": 105.0 + i,
+            "low": 98.0 + i,
+            "close": 102.0 + i,
+            "volume": 500_000,
+        }
+        for i in range(30)
+    ]
+    upsert_ohlcv(rows)
+
+    response = api_client.get("/ohlcv/DEMO?days=90")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "candles" in payload
+    assert payload["symbol"] == "DEMO"
+    assert len(payload["candles"]) >= 1
+    first = payload["candles"][0]
+    for key in ("time", "open", "high", "low", "close", "volume", "ma20", "ma50"):
+        assert key in first, f"Missing key: {key}"

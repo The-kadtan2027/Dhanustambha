@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.ingestion.store import (
     get_breadth,
     get_breadth_dates,
+    get_ohlcv,
     get_watchlist,
     init_db,
 )
@@ -220,6 +221,35 @@ def api_close_trade(trade_id: int, req: TradeCloseRequest) -> Dict[str, Any]:
         return {"status": "success", "id": trade_id}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/ohlcv/{symbol}")
+def ohlcv_chart(symbol: str, days: int = 90) -> Dict[str, Any]:
+    """Return OHLCV candles with rolling MA20/MA50 for the chart component."""
+    df = get_ohlcv(symbol.upper(), days=days)
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for symbol {symbol}")
+
+    df = df.sort_values("date").reset_index(drop=True)
+    df["ma20"] = df["close"].rolling(20, min_periods=1).mean()
+    df["ma50"] = df["close"].rolling(50, min_periods=1).mean()
+
+    candles: List[Dict[str, Any]] = []
+    for _, row in df.iterrows():
+        date_val = row["date"]
+        date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)
+        candles.append({
+            "time": date_str,
+            "open": _clean_value(row["open"]),
+            "high": _clean_value(row["high"]),
+            "low": _clean_value(row["low"]),
+            "close": _clean_value(row["close"]),
+            "volume": _clean_value(row["volume"]),
+            "ma20": _clean_value(row["ma20"]),
+            "ma50": _clean_value(row["ma50"]),
+        })
+
+    return {"symbol": symbol.upper(), "days": days, "candles": candles}
 
 
 @app.get("/trades/open")
