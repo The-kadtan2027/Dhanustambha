@@ -45,6 +45,9 @@ export type Trade = {
   pct_gain: number | null;
   days_held: number | null;
   action_required: string;
+  exit_price?: number | null;
+  pnl?: number | null;
+  status?: string;
 };
 
 export type TradeList = {
