@@ -1,22 +1,11 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useAccountSize } from "../../../hooks/useAccountSize";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [accountSize, setAccountSize] = useState(500000);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("dhanustambha_account_size");
-    if (saved) setAccountSize(Number(saved));
-  }, []);
-
-  const handleAccountSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value);
-    setAccountSize(val);
-    localStorage.setItem("dhanustambha_account_size", val.toString());
-  };
+  const [accountSize, setAccountSize] = useAccountSize();
 
   return (
     <aside className="sidebar">
@@ -30,7 +19,13 @@ export default function Sidebar() {
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
         <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px" }}>
           <span>Account Size (₹)</span>
-          <input type="number" value={accountSize} onChange={handleAccountSizeChange} step="10000" style={{ padding: "4px", background: "var(--bg-base)", color: "var(--text-main)", border: "1px solid var(--border-subtle)", borderRadius: "4px" }} />
+          <input
+            type="number"
+            value={accountSize}
+            onChange={(e) => setAccountSize(Number(e.target.value))}
+            step="10000"
+            style={{ padding: "4px", background: "var(--bg-base)", color: "var(--text-main)", border: "1px solid var(--border-subtle)", borderRadius: "4px" }}
+          />
         </label>
       </div>
     </aside>

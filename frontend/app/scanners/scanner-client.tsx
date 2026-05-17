@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import type { Briefing, DateList, WatchlistItem, TradeQuote } from '../../types/api';
 import { formatNumber, formatCurrency, setupLabel } from '../../lib/format';
 import { fetchJson } from '../../lib/api';
+import { useAccountSize } from '../../hooks/useAccountSize';
 import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
 import Metric from '../components/ui/Metric';
@@ -295,18 +296,7 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState('ALL');
-  const [accountSize, setAccountSize] = useState<number>(500000);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('dhanustambha_account_size');
-    if (saved) setAccountSize(Number(saved));
-  }, []);
-
-  const handleAccountSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value);
-    setAccountSize(val);
-    localStorage.setItem('dhanustambha_account_size', val.toString());
-  };
+  const [accountSize] = useAccountSize();
 
   const knownDates = useMemo(() => {
     if (selectedDate && !dates.includes(selectedDate)) return [selectedDate, ...dates];
@@ -347,10 +337,6 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
           <p>{filteredWatchlist.length} candidates found</p>
         </div>
         <div className="topbarControls">
-          <label className="dateControl">
-            <span className="label">Account Size (₹)</span>
-            <input type="number" value={accountSize} onChange={handleAccountSizeChange} step="10000" style={{ width: '110px', padding: '4px', background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: '4px' }} />
-          </label>
           <label className="dateControl">
             <span className="label">Briefing date</span>
             <select disabled={knownDates.length === 0 || isLoading} onChange={(e) => loadScanners(e.target.value)} value={selectedDate}>
