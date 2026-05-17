@@ -20,6 +20,9 @@ import type { Market, WatchlistItem, Briefing, DateList, Trade, TradeList, Trade
 import { formatNumber, formatCurrency, verdictClass, setupLabel } from '../lib/format';
 import { fetchJson } from '../lib/api';
 
+import Card from './components/ui/Card';
+import EmptyState from './components/ui/EmptyState';
+import Metric from './components/ui/Metric';
 export type DashboardClientProps = {
   apiBaseUrl: string;
   initialBriefing: Briefing | null;
@@ -28,41 +31,6 @@ export type DashboardClientProps = {
   initialActions: TradeList | null;
   initialSummary: TradeSummary | null;
 };
-
-function Card({
-  title,
-  icon,
-  children,
-  className = ""
-}: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={`panel ${className}`}>
-      <div className="panelHeader">
-        <span className="panelIcon">{icon}</span>
-        <h2>{title}</h2>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div className="empty">{text}</div>;
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
 
 function MarketPanel({ market, apiBaseUrl }: { market: Market | null; apiBaseUrl: string }) {
   const [breadthHistory, setBreadthHistory] = useState<Market[]>([]);
