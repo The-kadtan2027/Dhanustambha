@@ -1,34 +1,31 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import CandleChart, { type Candle } from "./components/CandleChart";
 import BreadthGauges from "./components/BreadthGauges";
 import {
   Activity,
   AlertTriangle,
   BarChart3,
   CheckCircle2,
-  Clock3,
   Filter,
   RefreshCw,
   ShieldAlert,
-  Target,
   TrendingUp
 } from "lucide-react";
 
-import type { Market, WatchlistItem, Briefing, DateList, Trade, TradeList, TradeSummary, TradeQuote } from '../types/api';
-import { formatNumber, formatCurrency, verdictClass, setupLabel } from '../lib/format';
+import type { Market, Briefing, DateList, Trade, TradeList, TradeSummary } from '../types/api';
+import { formatNumber, verdictClass } from '../lib/format';
 import { fetchJson } from '../lib/api';
 
 import Card from './components/ui/Card';
 import EmptyState from './components/ui/EmptyState';
 import Metric from './components/ui/Metric';
 import SummaryPanel from './components/ui/SummaryPanel';
+
 export type DashboardClientProps = {
   apiBaseUrl: string;
   initialBriefing: Briefing | null;
   initialDates: DateList | null;
-  initialOpenTrades: TradeList | null;
   initialActions: TradeList | null;
   initialSummary: TradeSummary | null;
 };
@@ -71,10 +68,7 @@ function MarketPanel({ market, apiBaseUrl }: { market: Market | null; apiBaseUrl
         <Metric label="Up Volume" value={formatNumber(market.up_volume_ratio, 2)} />
         <Metric
           label="Adv / Dec"
-          value={`${formatNumber(market.advancing, 0)} / ${formatNumber(
-            market.declining,
-            0
-          )}`}
+          value={`${formatNumber(market.advancing, 0)} / ${formatNumber(market.declining, 0)}`}
         />
       </div>
       <BreadthGauges market={market} history={breadthHistory} />
@@ -130,60 +124,15 @@ function TradeActionsPanel({
   );
 }
 
-function OpenTradesPanel({ trades }: { trades: Trade[] }) {
-  return (
-    <Card title="Open Trades" icon={<Clock3 size={18} />} className="wide">
-      {trades.length === 0 ? (
-        <EmptyState text="No open trades are logged." />
-      ) : (
-        <div className="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th>Setup</th>
-                <th className="num">Entry</th>
-                <th className="num">Stop</th>
-                <th className="num">Close</th>
-                <th className="num">P&L</th>
-                <th className="num">Gain</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trades.map((trade) => (
-                <tr key={trade.id}>
-                  <td>
-                    <strong>{trade.symbol}</strong>
-                  </td>
-                  <td>{trade.setup_type.replaceAll("_", " ")}</td>
-                  <td className="num">{formatCurrency(trade.entry_price)}</td>
-                  <td className="num">{formatCurrency(trade.stop_price)}</td>
-                  <td className="num">{formatCurrency(trade.current_close)}</td>
-                  <td className="num">{formatCurrency(trade.unrealized_pnl)}</td>
-                  <td className="num">{formatNumber(trade.pct_gain, 2)}%</td>
-                  <td>{trade.action_required.replaceAll("_", " ")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 export default function DashboardClient({
   apiBaseUrl,
   initialActions,
   initialBriefing,
   initialDates,
-  initialOpenTrades,
   initialSummary
 }: DashboardClientProps) {
   const [briefing, setBriefing] = useState(initialBriefing);
   const [dates, setDates] = useState(initialDates?.items ?? []);
-  const [openTrades, setOpenTrades] = useState(initialOpenTrades);
   const [actions, setActions] = useState(initialActions);
   const [summary, setSummary] = useState(initialSummary);
   const [selectedDate, setSelectedDate] = useState(initialBriefing?.date ?? "");
@@ -191,22 +140,7 @@ export default function DashboardClient({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [accountSize, setAccountSize] = useState<number>(500000);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("dhanustambha_account_size");
-    if (saved) {
-      setAccountSize(Number(saved));
-    }
-  }, []);
-
-  const handleAccountSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value);
-    setAccountSize(val);
-    localStorage.setItem("dhanustambha_account_size", val.toString());
-  };
-
-  const apiUnavailable = !briefing && !openTrades && !actions && !summary;
+  const apiUnavailable = !briefing && !actions && !summary;
   const knownDates = useMemo(() => {
     if (selectedDate && !dates.includes(selectedDate)) {
       return [selectedDate, ...dates];
@@ -219,18 +153,16 @@ export default function DashboardClient({
     setError(null);
     try {
       const briefingPath = nextDate ? `/briefing/${nextDate}` : "/briefing/latest";
-      const [nextBriefing, nextDates, nextOpenTrades, nextActions, nextSummary] =
+      const [nextBriefing, nextDates, nextActions, nextSummary] =
         await Promise.all([
           fetchJson<Briefing>(apiBaseUrl, briefingPath),
           fetchJson<DateList>(apiBaseUrl, "/briefing/dates"),
-          fetchJson<TradeList>(apiBaseUrl, "/trades/open"),
           fetchJson<TradeList>(apiBaseUrl, "/trades/actions"),
           fetchJson<TradeSummary>(apiBaseUrl, "/trades/summary")
         ]);
 
       setBriefing(nextBriefing);
       setDates(nextDates.items);
-      setOpenTrades(nextOpenTrades);
       setActions(nextActions);
       setSummary(nextSummary);
       setSelectedDate(nextBriefing.date);
@@ -243,62 +175,42 @@ export default function DashboardClient({
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <div>
-          <h1>Dhanustambha</h1>
-          <p>NSE momentum dashboard</p>
-        </div>
-        <div className="topbarControls">
-          <label className="dateControl">
-            <span className="label">Account Size (₹)</span>
-            <input
-              type="number"
-              value={accountSize}
-              onChange={handleAccountSizeChange}
-              step="10000"
-              style={{ width: "110px", padding: "4px", background: "var(--bg-card)", color: "var(--text-main)", border: "1px solid var(--border-subtle)", borderRadius: "4px" }}
-            />
-          </label>
-          <label className="dateControl">
-            <span className="label">Briefing date</span>
-            <select
-              disabled={knownDates.length === 0 || isLoading}
-              onChange={(event) => loadDashboard(event.target.value)}
-              value={selectedDate}
-            >
-              {knownDates.length === 0 ? (
-                <option value="">No dates</option>
-              ) : (
-                knownDates.map((date) => (
-                  <option key={date} value={date}>
-                    {date}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-          <button
-            className="iconButton"
-            disabled={isLoading}
-            onClick={() => loadDashboard(selectedDate)}
-            title="Retry API requests"
-            type="button"
+      <div className="topbarControls" style={{ marginBottom: "16px" }}>
+        <label className="dateControl">
+          <span className="label">Briefing date</span>
+          <select
+            disabled={knownDates.length === 0 || isLoading}
+            onChange={(event) => loadDashboard(event.target.value)}
+            value={selectedDate}
           >
-            <RefreshCw size={16} />
-          </button>
-          <div className={`statusPill ${apiUnavailable ? "offline" : "online"}`}>
-            {apiUnavailable ? (
-              <>
-                <AlertTriangle size={16} /> API offline
-              </>
+            {knownDates.length === 0 ? (
+              <option value="">No dates</option>
             ) : (
-              <>
-                <CheckCircle2 size={16} /> API connected
-              </>
+              knownDates.map((date) => (
+                <option key={date} value={date}>
+                  {date}
+                </option>
+              ))
             )}
-          </div>
+          </select>
+        </label>
+        <button
+          className="iconButton"
+          disabled={isLoading}
+          onClick={() => loadDashboard(selectedDate)}
+          title="Refresh data"
+          type="button"
+        >
+          <RefreshCw size={16} />
+        </button>
+        <div className={`statusPill ${apiUnavailable ? "offline" : "online"}`}>
+          {apiUnavailable ? (
+            <><AlertTriangle size={16} /> API offline</>
+          ) : (
+            <><CheckCircle2 size={16} /> API connected</>
+          )}
         </div>
-      </header>
+      </div>
 
       {error && (
         <div className="errorBanner">
@@ -316,10 +228,6 @@ export default function DashboardClient({
           <strong>{briefing?.date ?? "-"}</strong>
         </div>
         <div>
-          <span className="label">Open trades</span>
-          <strong>{openTrades?.count ?? 0}</strong>
-        </div>
-        <div>
           <span className="label">Actions</span>
           <strong>{actions?.count ?? 0}</strong>
         </div>
@@ -333,7 +241,6 @@ export default function DashboardClient({
           trades={actions?.items ?? []}
         />
         <SummaryPanel summary={summary} />
-        <OpenTradesPanel trades={openTrades?.items ?? []} />
       </section>
 
       <footer>

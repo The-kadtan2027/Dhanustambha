@@ -83,6 +83,7 @@
 - 2026-05-08 - Stream G G2 (TI): `pullback_depth_20d < 16.0` **VALIDATED** (offensive win rate >50%, significantly mitigated median alpha); `trend_efficiency_ratio < 0.3` **FAILED** (defensive regimes failed completely). TI G3 live filter promoted: `TI_MAX_PULLBACK_DEPTH_PCT = 16.0` in `config.py`, enforced in `detect_trend_intensity()`.
 - 2026-05-08 - Stream G Task 10 TI RS-band full-grid validation completed: `relative_strength_vs_benchmark_3m:2.4..6.7` **FAILED** full-grid — signal count choked (6–12 signals over H1 window), no generalisation beyond smoke sample. TI RS live filter **not promoted**.
 - 2026-05-08 - Stream G G3 tests added: `test_mb_prior_run_filter_rejects_extended_stock` and `test_ti_pullback_filter_rejects_deep_pullback` added to scanner test suite to explicitly verify G2-validated live filter rejection behaviour.
+- 2026-05-16 - Dashboard production-grade execution slice: added backend `/trades/quote` risk sizing, enforced server-calculated shares in `/trades/open` when `account_size` is supplied, and updated the dashboard trade ticket to display backend-derived risk, position value, R unit, max position, and market regime before confirmation.
 
 ## In Progress
 

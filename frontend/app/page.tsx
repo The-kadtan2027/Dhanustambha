@@ -19,10 +19,9 @@ async function fetchJson<T>(path: string): Promise<T | null> {
 }
 
 export default async function DashboardPage() {
-  const [briefing, dates, openTrades, actions, summary] = await Promise.all([
+  const [briefing, dates, actions, summary] = await Promise.all([
     fetchJson<Briefing>("/briefing/latest"),
     fetchJson<DateList>("/briefing/dates"),
-    fetchJson<TradeList>("/trades/open"),
     fetchJson<TradeList>("/trades/actions"),
     fetchJson<TradeSummary>("/trades/summary")
   ]);
@@ -33,7 +32,6 @@ export default async function DashboardPage() {
       initialActions={actions}
       initialBriefing={briefing}
       initialDates={dates}
-      initialOpenTrades={openTrades}
       initialSummary={summary}
     />
   );
