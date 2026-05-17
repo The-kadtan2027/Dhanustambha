@@ -1,4 +1,4 @@
-"""Read-only FastAPI endpoints for the Dhanustambha dashboard."""
+"""FastAPI endpoints for the Dhanustambha dashboard and manual trade workflow."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+import config
 from src.ingestion.store import (
     get_breadth,
     get_breadth_dates,
@@ -19,7 +20,14 @@ from src.ingestion.store import (
     get_watchlist,
     init_db,
 )
-from src.trade.log import build_open_trade_status, summarize_closed_trades, open_trade, update_stop_price, close_trade
+from src.trade.log import (
+    build_open_trade_status,
+    close_trade,
+    open_trade,
+    summarize_closed_trades,
+    update_stop_price,
+)
+from src.trade.sizer import calculate_position_size
 
 
 @asynccontextmanager
@@ -32,7 +40,7 @@ async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Dhanustambha Dashboard API",
     version="0.1.0",
-    description="Read-only API for market monitor, watchlists, and trade status.",
+    description="API for market monitor, watchlists, trade status, and manual trade workflow.",
     lifespan=lifespan,
 )
 
@@ -55,9 +63,18 @@ class TradeOpenRequest(BaseModel):
     entry_date: str
     entry_price: float
     stop_price: float
-    shares: int
+    shares: Optional[int] = None
+    account_size: Optional[float] = None
     notes: Optional[str] = None
     grade: Optional[str] = None
+
+class TradeQuoteRequest(BaseModel):
+    symbol: str
+    setup_type: str
+    entry_date: str
+    entry_price: float
+    stop_price: float
+    account_size: float
 
 class TradeUpdateStopRequest(BaseModel):
     stop_price: float
@@ -88,6 +105,61 @@ def _records_from_dataframe(df: pd.DataFrame) -> List[Dict[str, Any]]:
         {key: _clean_value(value) for key, value in row.items()}
         for row in cleaned.to_dict(orient="records")
     ]
+
+
+def _build_trade_quote(req: TradeQuoteRequest) -> Dict[str, Any]:
+    """Calculate a server-side trade quote or raise a validation error."""
+    if req.account_size <= 0:
+        raise HTTPException(status_code=422, detail="Account size must be positive.")
+
+    if req.entry_price <= 0:
+        raise HTTPException(status_code=422, detail="Entry price must be positive.")
+
+    if req.stop_price <= 0:
+        raise HTTPException(status_code=422, detail="Stop price must be positive.")
+
+    if req.stop_price >= req.entry_price:
+        raise HTTPException(
+            status_code=422,
+            detail="Stop price must be below entry price.",
+        )
+
+    market_verdict = "OFFENSIVE"
+    try:
+        market_verdict = str(_require_breadth(req.entry_date).get("verdict", "OFFENSIVE"))
+    except HTTPException:
+        market_verdict = "OFFENSIVE"
+
+    sizing = calculate_position_size(
+        account_size=req.account_size,
+        entry_price=req.entry_price,
+        stop_price=req.stop_price,
+        market_verdict=market_verdict,
+    )
+    if sizing is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Position size is invalid for the account, entry, and stop.",
+        )
+
+    risk_pct = config.TRADE_RISK_PCT * 100
+    max_position_value = req.account_size * config.TRADE_MAX_POSITION_PCT
+    return {
+        "valid": True,
+        "symbol": req.symbol.strip().upper(),
+        "setup_type": req.setup_type.strip().upper(),
+        "entry_date": req.entry_date,
+        "entry_price": req.entry_price,
+        "stop_price": req.stop_price,
+        "account_size": req.account_size,
+        "market_verdict": market_verdict.upper(),
+        "risk_pct": round(risk_pct, 2),
+        "max_position_value": round(max_position_value, 2),
+        "shares": int(sizing["shares"]),
+        "position_value": sizing["position_value"],
+        "risk_amount": sizing["risk_amount"],
+        "r_unit": sizing["r_unit"],
+    }
 
 
 def _require_breadth(date: Optional[str] = None) -> Dict[str, Any]:
@@ -191,26 +263,58 @@ def briefing_by_date(date: str) -> Dict[str, Any]:
     }
 
 
+@app.post("/trades/quote")
+def api_trade_quote(req: TradeQuoteRequest) -> Dict[str, Any]:
+    """Return server-side position sizing for a proposed manual trade."""
+    return _build_trade_quote(req)
+
+
 @app.post("/trades/open")
 def api_open_trade(req: TradeOpenRequest) -> Dict[str, Any]:
     try:
+        if req.account_size is not None:
+            quote = _build_trade_quote(
+                TradeQuoteRequest(
+                    symbol=req.symbol,
+                    setup_type=req.setup_type,
+                    entry_date=req.entry_date,
+                    entry_price=req.entry_price,
+                    stop_price=req.stop_price,
+                    account_size=req.account_size,
+                )
+            )
+            shares = int(quote["shares"])
+        elif req.shares is not None:
+            shares = int(req.shares)
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="Either account_size or shares must be provided.",
+            )
+
         trade_id = open_trade(
             symbol=req.symbol,
             setup_type=req.setup_type,
             entry_date=req.entry_date,
             entry_price=req.entry_price,
             stop_price=req.stop_price,
-            shares=req.shares,
+            shares=shares,
             notes=req.notes or "",
             grade=req.grade or ""
         )
         from src.ingestion.store import get_connection
+
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM trades WHERE id = ?", (trade_id,))
-        cols = [description[0] for description in cursor.description]
-        row = dict(zip(cols, cursor.fetchone()))
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM trades WHERE id = ?", (trade_id,))
+            cols = [description[0] for description in cursor.description]
+            row = dict(zip(cols, cursor.fetchone()))
+        finally:
+            conn.close()
         return row
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -287,3 +391,38 @@ def trade_summary() -> Dict[str, Any]:
     """Return expectancy-style closed-trade summary metrics."""
     summary = summarize_closed_trades()
     return {key: _clean_value(value) for key, value in summary.items()}
+
+class TradeReviewRequest(BaseModel):
+    entry_rule_followed: bool
+    exit_rule_followed: bool
+    what_to_improve: str
+    review_date: str
+
+@app.get("/trades/closed")
+def closed_trades() -> Dict[str, Any]:
+    """Return closed trades with optional reviews."""
+    from src.ingestion.store import get_closed_trades
+    rows = get_closed_trades()
+    return {"count": len(rows), "items": rows}
+
+@app.post("/trades/{trade_id}/review")
+def api_save_review(trade_id: int, req: TradeReviewRequest) -> Dict[str, Any]:
+    """Save a qualitative review for a closed trade."""
+    from src.ingestion.store import save_trade_review, get_connection
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM trades WHERE id = ?", (trade_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Trade not found.")
+    finally:
+        conn.close()
+        
+    save_trade_review(
+        trade_id=trade_id,
+        entry_rule_followed=int(req.entry_rule_followed),
+        exit_rule_followed=int(req.exit_rule_followed),
+        what_to_improve=req.what_to_improve,
+        review_date=req.review_date
+    )
+    return {"status": "saved", "trade_id": trade_id}

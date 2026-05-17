@@ -91,6 +91,15 @@ def init_db() -> None:
                 notes           TEXT,
                 grade           TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS trade_reviews (
+                trade_id                INTEGER PRIMARY KEY,
+                entry_rule_followed     INTEGER,
+                exit_rule_followed      INTEGER,
+                what_to_improve         TEXT,
+                review_date             TEXT,
+                FOREIGN KEY (trade_id) REFERENCES trades(id)
+            );
             """
         )
         conn.commit()
@@ -565,6 +574,50 @@ def get_latest_close(symbol: str, up_to_date: Optional[str] = None) -> Optional[
         return float(row[0]) if row is not None else None
     except sqlite3.OperationalError as exc:
         logger.error("Failed to fetch latest close for %s: %s", symbol, exc)
+        raise
+    finally:
+        conn.close()
+
+
+def save_trade_review(trade_id: int, entry_rule_followed: int, exit_rule_followed: int, what_to_improve: str, review_date: str) -> None:
+    """Save or update a qualitative review for a closed trade."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO trade_reviews (trade_id, entry_rule_followed, exit_rule_followed, what_to_improve, review_date)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(trade_id) DO UPDATE SET 
+                entry_rule_followed=excluded.entry_rule_followed,
+                exit_rule_followed=excluded.exit_rule_followed,
+                what_to_improve=excluded.what_to_improve,
+                review_date=excluded.review_date
+        """, (trade_id, entry_rule_followed, exit_rule_followed, what_to_improve, review_date))
+        conn.commit()
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to save trade review for trade_id %s: %s", trade_id, exc)
+        raise
+    finally:
+        conn.close()
+
+
+def get_closed_trades() -> List[Dict]:
+    """Return all closed trades, optionally joined with their trade reviews."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.*, 
+                   r.entry_rule_followed, r.exit_rule_followed, r.what_to_improve, r.review_date
+            FROM trades t
+            LEFT JOIN trade_reviews r ON t.id = r.trade_id
+            WHERE t.status != 'OPEN'
+            ORDER BY t.exit_date DESC
+        """)
+        cols = [description[0] for description in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to fetch closed trades: %s", exc)
         raise
     finally:
         conn.close()

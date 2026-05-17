@@ -253,6 +253,127 @@ def test_api_open_trade(api_client):
     assert data["symbol"] == "FOO"
     assert data["shares"] == 10
 
+
+def test_api_trade_quote_returns_server_sizing(api_client):
+    """Trade quote should calculate server-side sizing from account risk."""
+    response = api_client.post(
+        "/trades/quote",
+        json={
+            "symbol": "FOO",
+            "setup_type": "MOMENTUM_BURST",
+            "entry_date": "2026-05-16",
+            "entry_price": 100.0,
+            "stop_price": 95.0,
+            "account_size": 500_000.0,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["valid"] is True
+    assert payload["shares"] == 1250
+    assert payload["risk_amount"] == 6250.0
+    assert payload["position_value"] == 125000.0
+    assert payload["r_unit"] == 5.0
+    assert payload["market_verdict"] == "OFFENSIVE"
+
+
+def test_api_trade_quote_rejects_invalid_stop(api_client):
+    """Trade quote should reject a stop that is not below entry."""
+    response = api_client.post(
+        "/trades/quote",
+        json={
+            "symbol": "FOO",
+            "setup_type": "MOMENTUM_BURST",
+            "entry_date": "2026-05-16",
+            "entry_price": 100.0,
+            "stop_price": 101.0,
+            "account_size": 500_000.0,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Stop price must be below entry price" in response.json()["detail"]
+
+
+def test_api_trade_quote_uses_defensive_sizing(api_client):
+    """Trade quote should apply defensive size reduction for DEFENSIVE sessions."""
+    from src.ingestion.store import save_breadth
+
+    save_breadth(
+        {
+            "date": "2026-05-16",
+            "pct_above_ma20": 50.0,
+            "pct_above_ma50": 45.0,
+            "new_highs_52w": 20,
+            "new_lows_52w": 10,
+            "up_volume_ratio": 0.51,
+            "advancing": 260,
+            "declining": 240,
+            "verdict": "DEFENSIVE",
+        }
+    )
+
+    response = api_client.post(
+        "/trades/quote",
+        json={
+            "symbol": "FOO",
+            "setup_type": "MOMENTUM_BURST",
+            "entry_date": "2026-05-16",
+            "entry_price": 100.0,
+            "stop_price": 95.0,
+            "account_size": 500_000.0,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["market_verdict"] == "DEFENSIVE"
+    assert payload["shares"] == 625
+    assert payload["position_value"] == 62500.0
+
+
+def test_api_open_trade_uses_server_calculated_shares(api_client):
+    """Opening a trade should ignore stale browser share math and store server sizing."""
+    response = api_client.post(
+        "/trades/open",
+        json={
+            "symbol": "FOO",
+            "setup_type": "MOMENTUM_BURST",
+            "entry_date": "2026-05-16",
+            "entry_price": 100.0,
+            "stop_price": 95.0,
+            "shares": 1,
+            "account_size": 500_000.0,
+            "grade": "B",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["symbol"] == "FOO"
+    assert payload["shares"] == 1250
+
+
+def test_api_open_trade_rejects_invalid_quote(api_client):
+    """Opening a trade should reject invalid risk inputs before writing a trade."""
+    response = api_client.post(
+        "/trades/open",
+        json={
+            "symbol": "FOO",
+            "setup_type": "MOMENTUM_BURST",
+            "entry_date": "2026-05-16",
+            "entry_price": 100.0,
+            "stop_price": 101.0,
+            "shares": 1,
+            "account_size": 500_000.0,
+            "grade": "B",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Stop price must be below entry price" in response.json()["detail"]
+
 def test_api_update_and_close_trade(api_client):
     """API should allow updating the stop price and closing the trade."""
     res = api_client.post("/trades/open", json={
@@ -329,3 +450,18 @@ def test_breadth_history_endpoint_returns_rows(api_client):
     first = payload["items"][0]
     for key in ("date", "pct_above_ma20", "up_volume_ratio", "verdict"):
         assert key in first, f"Missing key: {key}"
+
+def test_closed_trades_and_review(api_client):
+    """Test fetching closed trades and saving reviews."""
+    res_closed = api_client.get("/trades/closed")
+    assert res_closed.status_code == 200
+    
+    review_data = {
+        "entry_rule_followed": True,
+        "exit_rule_followed": True,
+        "what_to_improve": "Solid exit.",
+        "review_date": "2026-05-17"
+    }
+    # Assume trade 9999 doesn't exist
+    res_review = api_client.post("/trades/9999/review", json=review_data)
+    assert res_review.status_code == 404

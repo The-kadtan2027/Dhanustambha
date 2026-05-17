@@ -182,3 +182,36 @@ def test_get_stored_dates_returns_sorted_distinct_dates(tmp_db):
     upsert_ohlcv(rows)
 
     assert get_stored_dates() == ["2026-04-09", "2026-04-10"]
+
+
+def test_trade_reviews(tmp_db):
+    """Test saving trade reviews and fetching closed trades with reviews."""
+    from src.ingestion.store import init_db, save_trade_review, get_closed_trades, save_trade, update_trade
+    
+    init_db()
+    
+    # Save a trade to review
+    trade_id = save_trade({
+        "symbol": "TEST",
+        "setup_type": "EP",
+        "entry_date": "2026-05-17",
+        "entry_price": 100.0,
+        "shares": 10,
+        "stop_price": 95.0,
+        "target_price": None,
+        "notes": "",
+        "status": "OPEN",
+        "grade": "A"
+    })
+    
+    # Mark as closed
+    update_trade(trade_id, {"status": "CLOSED_WIN", "exit_date": "2026-05-18", "exit_price": 110.0})
+    
+    save_trade_review(trade_id, 1, 1, "Good trade", "2026-05-18")
+    
+    trades = get_closed_trades()
+    
+    assert len(trades) > 0
+    assert trades[0]["entry_rule_followed"] == 1
+    assert trades[0]["exit_rule_followed"] == 1
+    assert trades[0]["what_to_improve"] == "Good trade"
