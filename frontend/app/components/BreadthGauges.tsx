@@ -12,7 +12,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import type { Market } from "../dashboard-client";
+import type { Market } from "../../types/api";
 
 type Props = {
   market: Market;

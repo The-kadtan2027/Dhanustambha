@@ -16,69 +16,11 @@ import {
   TrendingUp
 } from "lucide-react";
 
-export type Market = {
-  date: string;
-  pct_above_ma20: number | null;
-  pct_above_ma50: number | null;
-  new_highs_52w: number | null;
-  new_lows_52w: number | null;
-  up_volume_ratio: number | null;
-  advancing: number | null;
-  declining: number | null;
-  verdict: string;
-};
+import type { Market, WatchlistItem, Briefing, DateList, Trade, TradeList, TradeSummary, TradeQuote } from '../types/api';
+import { formatNumber, formatCurrency, verdictClass, setupLabel } from '../lib/format';
+import { fetchJson } from '../lib/api';
 
-export type WatchlistItem = {
-  symbol: string;
-  setup_type: string;
-  score: number | null;
-  pct_change: number | null;
-  volume_ratio: number | null;
-  close: number | null;
-  notes: string | null;
-};
-
-export type Briefing = {
-  date: string;
-  market: Market;
-  watchlist: WatchlistItem[];
-  watchlist_count: number;
-};
-
-export type DateList = {
-  count: number;
-  items: string[];
-};
-
-export type Trade = {
-  id: number;
-  symbol: string;
-  setup_type: string;
-  entry_date: string;
-  entry_price: number | null;
-  shares: number | null;
-  stop_price: number | null;
-  current_close: number | null;
-  unrealized_pnl: number | null;
-  pct_gain: number | null;
-  days_held: number | null;
-  action_required: string;
-};
-
-export type TradeList = {
-  count: number;
-  items: Trade[];
-};
-
-export type TradeSummary = {
-  total_trades: number;
-  win_rate: number;
-  avg_win_r: number;
-  avg_loss_r: number;
-  expectancy_r: number;
-};
-
-type DashboardClientProps = {
+export type DashboardClientProps = {
   apiBaseUrl: string;
   initialBriefing: Briefing | null;
   initialDates: DateList | null;
@@ -86,49 +28,6 @@ type DashboardClientProps = {
   initialActions: TradeList | null;
   initialSummary: TradeSummary | null;
 };
-
-async function fetchJson<T>(apiBaseUrl: string, path: string): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    cache: "no-store"
-  });
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
-  }
-  return (await response.json()) as T;
-}
-
-function formatNumber(value: number | null, digits = 1): string {
-  if (value === null || Number.isNaN(value)) {
-    return "-";
-  }
-  return value.toFixed(digits);
-}
-
-function formatCurrency(value: number | null): string {
-  if (value === null || Number.isNaN(value)) {
-    return "-";
-  }
-  return new Intl.NumberFormat("en-IN", {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2
-  }).format(value);
-}
-
-function verdictClass(verdict: string): string {
-  const normalized = verdict.toUpperCase();
-  if (normalized === "OFFENSIVE") {
-    return "good";
-  }
-  if (normalized === "DEFENSIVE") {
-    return "warn";
-  }
-  return "bad";
-}
-
-function setupLabel(setupType: string, notes: string | null): string {
-  const marker = notes?.includes("A+") ? "A+ " : notes?.includes("HIGH") ? "HIGH " : "";
-  return `${marker}${setupType.replaceAll("_", " ")}`;
-}
 
 function Card({
   title,
@@ -291,10 +190,15 @@ function CandidateDetailPanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [quote, setQuote] = useState<TradeQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
     setIsExecuting(false);
     setStopPrice("");
+    setQuote(null);
+    setQuoteError(null);
   }, [item]);
 
   useEffect(() => {
@@ -307,6 +211,55 @@ function CandidateDetailPanel({
       .finally(() => setChartLoading(false));
   }, [item, apiBaseUrl]);
 
+  const entryPrice = item?.close ?? 0;
+  const stopValue = Number(stopPrice);
+
+  useEffect(() => {
+    if (!isExecuting || !item || entryPrice <= 0 || !stopPrice || accountSize <= 0) {
+      setQuote(null);
+      setQuoteError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setQuoteLoading(true);
+    setQuoteError(null);
+    fetch(`${apiBaseUrl}/trades/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol: item.symbol,
+        setup_type: item.setup_type,
+        entry_date: date,
+        entry_price: entryPrice,
+        stop_price: Number(stopPrice),
+        account_size: accountSize
+      }),
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.detail ?? `Quote failed: ${response.status}`);
+        }
+        return response.json() as Promise<TradeQuote>;
+      })
+      .then((payload) => {
+        setQuote(payload);
+        setQuoteError(null);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        setQuote(null);
+        setQuoteError(err instanceof Error ? err.message : "Quote failed");
+      })
+      .finally(() => setQuoteLoading(false));
+
+    return () => controller.abort();
+  }, [accountSize, apiBaseUrl, date, entryPrice, isExecuting, item, stopPrice]);
+
   if (!item) {
     return (
       <Card title="Candidate Detail" icon={<Target size={18} />}>
@@ -315,19 +268,9 @@ function CandidateDetailPanel({
     );
   }
 
-  const entryPrice = item.close ?? 0;
-  const stopValue = Number(stopPrice);
-  const diff = entryPrice - stopValue;
-  // compute shares
-  let shares = 0;
-  if (stopValue > 0 && diff > 0 && accountSize > 0) {
-    const riskAmount = accountSize * 0.01; // 1% risk
-    shares = Math.floor(riskAmount / diff);
-  }
-
   async function handleExecute(e: React.FormEvent) {
     e.preventDefault();
-    if (shares <= 0) return;
+    if (!quote || quote.shares <= 0) return;
     setIsSubmitting(true);
     try {
       const payload = {
@@ -336,7 +279,8 @@ function CandidateDetailPanel({
         entry_date: date,
         entry_price: entryPrice,
         stop_price: stopValue,
-        shares,
+        account_size: accountSize,
+        shares: quote.shares,
         grade: ""
       };
       
@@ -364,7 +308,6 @@ function CandidateDetailPanel({
             <span className="label">Executing: {item.symbol}</span>
             <strong className="detailTitle">Entry at {formatCurrency(entryPrice)}</strong>
           </div>
-          <Metric label="1% Risk Amount" value={formatCurrency(accountSize * 0.01)} />
           <label style={{display: "flex", flexDirection: "column", gap: "4px"}}>
             <span className="label">Stop Loss</span>
             <input 
@@ -376,10 +319,20 @@ function CandidateDetailPanel({
               style={{ background: "var(--bg-card)", color: "var(--text-main)", border: "1px solid var(--border-subtle)", borderRadius: "4px", padding: "4px" }}
             />
           </label>
-          <Metric label="Computed Shares" value={shares.toString()} />
-          <Metric label="Position Value" value={formatCurrency(shares * entryPrice)} />
+          <Metric label="Market Regime" value={quote?.market_verdict ?? "-"} />
+          <Metric label="Risk Budget" value={quote ? `${formatCurrency(quote.risk_amount)} (${formatNumber(quote.risk_pct, 2)}%)` : "-"} />
+          <Metric label="Computed Shares" value={quoteLoading ? "Quoting..." : quote ? quote.shares.toString() : "-"} />
+          <Metric label="Position Value" value={quote ? formatCurrency(quote.position_value) : "-"} />
+          <Metric label="R Unit" value={quote ? formatCurrency(quote.r_unit) : "-"} />
+          <Metric label="Max Position" value={quote ? formatCurrency(quote.max_position_value) : "-"} />
+          {quoteError && (
+            <div className="errorBanner" style={{ gridColumn: "1 / -1", marginBottom: 0 }}>
+              <AlertTriangle size={16} />
+              <span>{quoteError}</span>
+            </div>
+          )}
           <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-            <button type="submit" disabled={isSubmitting || shares <= 0} style={{ fontWeight: "bold" }}>
+            <button type="submit" disabled={isSubmitting || quoteLoading || !quote || quote.shares <= 0} style={{ fontWeight: "bold" }}>
               {isSubmitting ? "Opening..." : "Confirm Trade"}
             </button>
             <button type="button" onClick={() => setIsExecuting(false)}>Cancel</button>

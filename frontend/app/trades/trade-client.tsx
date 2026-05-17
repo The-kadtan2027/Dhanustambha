@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { AlertTriangle, Clock3, RefreshCw, CheckCircle2, TrendingUp, Home } from "lucide-react";
-import type { Trade, TradeList } from "../dashboard-client";
+import type { Trade, TradeList } from '../../types/api';
+import { formatNumber, formatCurrency } from '../../lib/format';
 import CandleChart, { type Candle } from "../components/CandleChart";
 
 type TradeClientProps = {
@@ -10,18 +11,6 @@ type TradeClientProps = {
   initialOpenTrades: TradeList | null;
 };
 
-function formatCurrency(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "-";
-  return new Intl.NumberFormat("en-IN", {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2
-  }).format(value);
-}
-
-function formatNumber(value: number | null, digits = 1): string {
-  if (value === null || Number.isNaN(value)) return "-";
-  return value.toFixed(digits);
-}
 
 export default function TradeClient({ apiBaseUrl, initialOpenTrades }: TradeClientProps) {
   const [openTrades, setOpenTrades] = useState(initialOpenTrades);

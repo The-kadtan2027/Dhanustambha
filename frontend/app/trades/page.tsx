@@ -1,5 +1,5 @@
 import TradeClient from "./trade-client";
-import type { TradeList } from "../dashboard-client";
+import type { TradeList } from "../../types/api";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
