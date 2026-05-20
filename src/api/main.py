@@ -73,7 +73,7 @@ class LivePriceCache:
         self.data.update(fresh)
         self.last_fetch_time = now
         # Mark fresh results as not cached
-        return {s: {**self.data[s], "is_cached": False} for s in symbols}
+        return {s: {**self.data[s], "is_cached": False} for s in symbols if s in self.data}
 
 _price_cache = LivePriceCache()
 

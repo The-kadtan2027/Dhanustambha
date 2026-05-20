@@ -381,7 +381,7 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
     if (!briefing || briefing.watchlist.length === 0) return;
     
     let isMounted = true;
-    const symbols = Array.from(new Set(briefing.watchlist.map(i => i.symbol))).join(',');
+    const symbols = encodeURIComponent(Array.from(new Set(briefing.watchlist.map(i => i.symbol))).join(','));
     
     async function fetchLive() {
       try {
