@@ -623,7 +623,7 @@ Watchlist saved to: data/watchlists/2026-05-16.csv
 
 ## 9. Current Status & Active Plan
 
-**Last updated:** 2026-05-16
+**Last updated:** 2026-05-17
 **Current phase:** Phase 6 — Paper Trading
 
 **Active plan file:** `docs/superpowers/plans/2026-05-16-interactive-trade-book.md`
@@ -658,9 +658,9 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 
 ### Next Actions
 
-1. **Fix pre-existing test failure:** `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` fails because synthetic close series does not satisfy `MB_MAX_PRIOR_RUN = -2.3`. Fix by relaxing the synthetic fixture's prior-run or monkeypatching `MB_MAX_PRIOR_RUN` in the test.
-2. **Setup Interactive Trade Execution Live Testing:** Test the new `Trade Book` UI with live paper trading candidates, ensuring position sizes correctly reflect the 1% risk threshold.
-3. **Continue daily live monitoring** and Phase 6 paper trading validation in parallel.
+1. **Resolve Phase 6 risk policy:** Decide whether live paper trading should use current config (`TRADE_RISK_PCT = 0.025`, `TRADE_MAX_POSITION_PCT = 0.25`) or the handoff-stated 1% risk / max-position cap, then update `config.py` and docs if needed.
+2. **Continue Trade Book live testing** by opening a controlled paper trade only after the risk policy is confirmed.
+3. **Keep EP quality filtering in observation mode** until a longer window justifies promoting `EP_MAX_GAP_VOLUME_RATIO = 4.9` to a live default.
 
 ---
 
@@ -696,8 +696,9 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 ✅ 2026-04-28 — Watchlist improvement: matched_setups + setup_match_count fields retained in export
 ✅ 2026-04-28 — Deep alpha analysis (2+ years): EP confirmed as only scanner with true edge
 ✅ 2026-04-28 — EP Dual-Tier Output: A+ (tight thresholds) and B labels implemented
-✅ 2026-04-28 — MB Quality Redesign: HIGH label for composite filter (NR_10>=6 + close_location>=70% + 20d_high_breakout)
-✅ 2026-04-28 — Daily briefing UI: HIGH/A+ sort to top, marked with ⭐ in console output
+✅ 2026-04-28 — MB Quality Redesign: HIGH label implemented
+✅ 2026-04-28 — Daily briefing UI: HIGH/A+ sort to top, marked with ⭐
+✅ 2026-05-17 — UX Refinements: enlarged charts to 400px, CSS breadth progress bars, and manual briefing trigger UI/API added
 ✅ 2026-04-29 — Stop-Loss Optimization (MAE): EP=4.0%, MB=2.5%, TI=1.5% fixed stops added to config.py
 ✅ 2026-04-29 — Target & Exit Strategy (MFE): hold 20d, trail to breakeven at +5%
 ✅ 2026-04-29 — Daily briefing UI: STOP_LOSS dynamic column added to output table
@@ -746,6 +747,32 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
    - Built `BreadthGauges.tsx` component with radial gauges (Above MA20, Above MA50, Up Vol), High/Low bar, and historical breadth line chart
    - Integrated into the existing text-only `MarketPanel` on the main dashboard without removing metrics
    - Merged `feature/breadth-dashboard` into `main`
+✅ 2026-05-17 — Backtest handoff verification
+   - Verified `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` already passes with a test-local `MB_MAX_PRIOR_RUN` monkeypatch
+   - Ran the full `tests/test_backtest.py` suite: 9 passed
+   - Removed the stale "must fix next" handoff from active next actions
+✅ 2026-05-17 — Trade ticket live validation fix
+   - Scanner execution now seeds a setup-aware default stop loss before requesting `/trades/quote`
+   - Verified AFFLE on 2026-05-11 populated backend quote fields and enabled `Confirm Trade`
+   - Cancelled the validation ticket; `/trades/open` remained unchanged at 0 open trades
+   - Added Playwright coverage for the scanner quote path
+✅ 2026-05-17 — Valvo Dashboard Visual Upgrade (Sub-Projects A, B, C, D)
+   - Built PositionCard and PortfolioBar components for Trade Book card grid layout
+   - Added new `/stock/[symbol]` detail route with standalone stock view
+   - Redesigned BreadthGauges with regime badges, dense A/D bars, and sparklines
+   - Rewrote TradeClient and resolved Playwright test suite failures, verifying fully integrated frontend
+✅ 2026-05-17 — Dedicated Market Monitor page
+   - Added `/market` as a full-width market breadth view with regime summary, timeframe controls, advance/decline panels, MA breadth trend charts, and corrected green/red net A/D bars
+   - Added sidebar navigation and a dashboard "Full monitor" link so the compact dashboard card is no longer the only breadth surface
+   - Verified the frontend production build and a browser smoke against `http://127.0.0.1:3000/market`
+✅ 2026-05-20 — Bug fix: EP scanner tab showed 0 candidates
+   - Root cause: `scanner-client.tsx` filter tab used the alias `'EP'` as the filter value; DB stores `setup_type = 'EPISODIC_PIVOT'`
+   - Fix: segmented control now uses `'EPISODIC_PIVOT'` as value with `'EP'` as display label
+   - Added `test_ep_watchlist_setup_type_is_episodic_pivot_not_ep` to `tests/test_api.py` to lock in the contract
+✅ 2026-05-20 — Bug fix: trade modal shares field was read-only
+   - Root cause: the execute form displayed computed shares as a `<Metric>` display-only component; user had no way to override the server-computed quantity
+   - Fix: replaced `<Metric>` with an editable `<input type="number">` seeded from `quote.shares`; user override is wired into the `/trades/open` payload
+   - `Confirm Trade` button remains disabled until a valid quote exists and shares > 0
 ```
 
 ---
@@ -764,7 +791,13 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 
 ### Active Issues
 
-- **Pre-existing test failure (MUST FIX NEXT):** `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` fails because the synthetic close series does not satisfy `MB_MAX_PRIOR_RUN = -2.3` (always was failing after the G2 filter was promoted to live). Fix: relax synthetic data's prior-run in the test fixture or monkeypatch `MB_MAX_PRIOR_RUN`.
+- No active test failure is currently noted from the Phase 6 handoff. The previous `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` item was verified passing on 2026-05-17.
+
+- ~~EP scanner tab showed 0 candidates on 2026-05-20~~ **RESOLVED 2026-05-20** — filter value corrected from `'EP'` alias to `'EPISODIC_PIVOT'` in `scanner-client.tsx`.
+
+- ~~Trade modal shares field was read-only~~ **RESOLVED 2026-05-20** — editable `<input>` field with server-computed default added to `CandidateDetailPanel`.
+
+- Phase 6 risk config needs an explicit decision before real paper-trade entry: current `config.py` uses `TRADE_RISK_PCT = 0.025` and `TRADE_MAX_POSITION_PCT = 0.25`, while the handoff language expected 1% risk and a max-position cap. The UI correctly reflects backend config, but the intended risk policy must be confirmed.
 
 - `src/review/market_regime.py` from a follow-on plan is intentionally deferred; calibration proceeds without market-regime classification until explicitly prioritised.
 
