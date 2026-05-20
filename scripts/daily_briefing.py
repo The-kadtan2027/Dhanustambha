@@ -225,11 +225,15 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
         return
 
     print(f"\n[3/4] Running setup scanners (market is {verdict})...")
-    mb_results = detect_momentum_burst(all_data)
-    ep_results = detect_episodic_pivot(all_data)
-    ti_results = detect_trend_intensity(all_data)
+    
+    # Scanners only need up to ~70 days of history; passing 260 days causes severe Pandas slowdowns
+    scanner_data = all_data.groupby("symbol").tail(70).reset_index(drop=True)
+    
+    mb_results = detect_momentum_burst(scanner_data)
+    ep_results = detect_episodic_pivot(scanner_data)
+    ti_results = detect_trend_intensity(scanner_data)
     try:
-        reentry_results = detect_ep_reentry(all_data)
+        reentry_results = detect_ep_reentry(scanner_data)
     except Exception as e:
         logger.error(f"Error running EP re-entry scanner: {e}")
         reentry_results = pd.DataFrame()

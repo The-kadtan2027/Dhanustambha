@@ -604,11 +604,11 @@ def _run_live_scan_worker(job_id: str):
                 rows.append({
                     "symbol": s,
                     "date": today,
-                    "open": d.get("open"),
-                    "high": d.get("high"),
-                    "low": d.get("low"),
+                    "open": d.get("open") if d.get("open") is not None else d["price"],
+                    "high": d.get("high") if d.get("high") is not None else d["price"],
+                    "low": d.get("low") if d.get("low") is not None else d["price"],
                     "close": d["price"],
-                    "volume": d.get("volume")
+                    "volume": d.get("volume") or 0
                 })
         
         if rows:
@@ -629,9 +629,12 @@ def _run_live_scan_worker(job_id: str):
         job["status"] = "scanning"
         job["progress"] = 90
         
-        mb_results = detect_momentum_burst(full_df)
-        ep_results = detect_episodic_pivot(full_df)
-        ti_results = detect_trend_intensity(full_df)
+        # Limit data to recent history for scanners to avoid massive Pandas groupBy slowdowns
+        scanner_df = full_df.groupby("symbol").tail(70).reset_index(drop=True)
+        
+        mb_results = detect_momentum_burst(scanner_df)
+        ep_results = detect_episodic_pivot(scanner_df)
+        ti_results = detect_trend_intensity(scanner_df)
         
         # 6. Build and Export Watchlist
         # This ranks and saves to both CSV and SQLite

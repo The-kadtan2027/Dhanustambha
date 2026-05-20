@@ -812,6 +812,10 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 
 - ~~Breadth calculator returns 0 for MA50 & 52-week Highs/Lows~~ **RESOLVED 2026-05-20** — moved pandas `.rolling()` window evaluations to execute *before* truncating burn-in rows; updated `daily_briefing.py` & `main.py` to correctly supply 260-business-day lookback instead of 60 days.
 
+- ~~Scanners freeze or run extremely slow with 260-day universe data~~ **RESOLVED 2026-05-20** — scanners don't need 260-day context like the breadth Monitor; filtered them down to `tail(70)` per symbol before execution to bypass Pandas `.groupby().shift()` bottlenecks.
+
+- ~~Live Scraper fallback writes NULL rows for missing High/Low/Open bounds~~ **RESOLVED 2026-05-20** — `main.py` now populates missing OHLC fields mapped from `price` (closing LTP) to prevent NaNs escalating in downstream aggregations. Manually cleaned up corrupted `2026-05-20` database rows utilizing python `sqlite3`.
+
 - Phase 6 risk config needs an explicit decision before real paper-trade entry: current `config.py` uses `TRADE_RISK_PCT = 0.025` and `TRADE_MAX_POSITION_PCT = 0.25`, while the handoff language expected 1% risk and a max-position cap. The UI correctly reflects backend config, but the intended risk policy must be confirmed.
 
 - `src/review/market_regime.py` from a follow-on plan is intentionally deferred; calibration proceeds without market-regime classification until explicitly prioritised.
