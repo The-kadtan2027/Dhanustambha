@@ -465,3 +465,88 @@ def test_closed_trades_and_review(api_client):
     # Assume trade 9999 doesn't exist
     res_review = api_client.post("/trades/9999/review", json=review_data)
     assert res_review.status_code == 404
+
+def test_portfolio_summary_with_open_trade(api_client):
+    """Portfolio endpoint should aggregate open trade metrics."""
+    from src.trade.log import open_trade
+    from src.ingestion.store import upsert_ohlcv
+
+    upsert_ohlcv([
+        {"symbol": "INFY", "date": "2026-05-15", "open": 100.0, "high": 102.0, "low": 99.0, "close": 100.0, "volume": 300000},
+        {"symbol": "INFY", "date": "2026-05-16", "open": 101.0, "high": 108.0, "low": 100.0, "close": 106.0, "volume": 400000},
+    ])
+    open_trade(symbol="INFY", setup_type="EP", entry_date="2026-05-15",
+               entry_price=100.0, shares=10, stop_price=96.0)
+
+    res = api_client.get("/trades/portfolio")
+    assert res.status_code == 200
+    data = res.json()
+    assert "total_invested" in data
+    assert "total_pnl" in data
+    assert "open_risk" in data
+    assert "locked_profit" in data
+    assert data["total_invested"] == 1000.0   # 100 * 10
+    assert data["open_risk"] == 40.0           # (100 - 96) * 10
+
+def test_ep_watchlist_setup_type_is_episodic_pivot_not_ep(api_client):
+    """EP scanner output must use 'EPISODIC_PIVOT' as setup_type (not the alias 'EP').
+
+    The frontend scanner tab filter compares item.setup_type against a filter string.
+    If the API returns 'EPISODIC_PIVOT' but the tab filter uses 'EP', no candidates
+    appear on the EP tab. This test locks in the correct DB contract.
+    """
+    from src.ingestion.store import save_breadth, save_watchlist
+
+    save_breadth({
+        "date": "2026-05-19",
+        "pct_above_ma20": 60.0, "pct_above_ma50": 55.0,
+        "new_highs_52w": 40, "new_lows_52w": 8,
+        "up_volume_ratio": 0.65, "advancing": 300, "declining": 190,
+        "verdict": "OFFENSIVE",
+    })
+    # Save an EP candidate using the canonical setup_type value
+    save_watchlist([{
+        "date": "2026-05-19",
+        "symbol": "POLYCAB",
+        "setup_type": "EPISODIC_PIVOT",   # ← canonical value stored in DB
+        "score": 30.0, "pct_change": 7.5, "volume_ratio": 4.2,
+        "close": 5200.0, "notes": "A+",
+    }])
+
+    response = api_client.get("/briefing/2026-05-19")
+    assert response.status_code == 200
+    items = response.json()["watchlist"]
+    assert len(items) == 1
+    # The canonical value must be 'EPISODIC_PIVOT' — not 'EP'
+    assert items[0]["setup_type"] == "EPISODIC_PIVOT", (
+        "EP items must return setup_type='EPISODIC_PIVOT'. "
+        "The frontend scanner filter tab must use 'EPISODIC_PIVOT' to match."
+    )
+    # Sanity: filtering against the wrong alias must yield 0 matches
+    ep_filtered = [i for i in items if i["setup_type"] == "EP"]
+    assert ep_filtered == [], (
+        "Filtering by 'EP' (the alias) must return nothing — "
+        "this is why the frontend tab was broken."
+    )
+
+
+def test_trades_by_symbol_returns_all_statuses(api_client):
+
+    """Should return both open and closed trades for a symbol."""
+    from src.trade.log import open_trade, close_trade
+    from src.ingestion.store import upsert_ohlcv
+
+    upsert_ohlcv([
+        {"symbol": "TCS", "date": "2026-05-10", "open": 200.0, "high": 202.0, "low": 199.0, "close": 200.0, "volume": 500000},
+        {"symbol": "TCS", "date": "2026-05-11", "open": 201.0, "high": 215.0, "low": 200.0, "close": 210.0, "volume": 800000},
+    ])
+    tid = open_trade(symbol="TCS", setup_type="MB", entry_date="2026-05-10",
+                     entry_price=200.0, shares=5, stop_price=195.0)
+    close_trade(tid, exit_date="2026-05-11", exit_price=210.0)
+
+    res = api_client.get("/trades/by-symbol/TCS")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["symbol"] == "TCS"
+    assert len(data["trades"]) == 1
+    assert data["trades"][0]["status"] in ("CLOSED_WIN", "CLOSED_LOSS", "CLOSED_BE", "OPEN")

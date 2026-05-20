@@ -9,7 +9,8 @@ import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
 import Metric from '../components/ui/Metric';
 import CandleChart, { type Candle } from '../components/CandleChart';
-import { Target, AlertTriangle, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Target, AlertTriangle, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 
 type ScannerClientProps = {
   apiBaseUrl: string;
@@ -56,9 +57,9 @@ function WatchlistPanel({
                     onClick={() => onSelect(item)}
                   >
                     <td>
-                      <button className="textButton" type="button">
+                      <Link href={`/stock/${item.symbol}`} className="textButton">
                         {item.symbol}
-                      </button>
+                      </Link>
                     </td>
                     <td>{setupLabel(item.setup_type, item.notes)}</td>
                     <td className="num">{formatNumber(item.pct_change)}%</td>
@@ -93,6 +94,8 @@ function CandidateDetailPanel({
 }) {
   const [isExecuting, setIsExecuting] = useState(false);
   const [stopPrice, setStopPrice] = useState("");
+  // Bug 2 fix: editable shares field — seeded from server quote, overrideable by user
+  const [userShares, setUserShares] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -103,6 +106,7 @@ function CandidateDetailPanel({
   useEffect(() => {
     setIsExecuting(false);
     setStopPrice("");
+    setUserShares("");
     setQuote(null);
     setQuoteError(null);
   }, [item]);
@@ -119,6 +123,20 @@ function CandidateDetailPanel({
 
   const entryPrice = item?.close ?? 0;
   const stopValue = Number(stopPrice);
+
+  function defaultStopPrice(nextItem: WatchlistItem): string {
+    const stopPctBySetup: Record<string, number> = {
+      MOMENTUM_BURST: 2.5,
+      EP: 4.0,
+      EPISODIC_PIVOT: 4.0,
+      TREND_INTENSITY: 1.5,
+    };
+    const stopPct = stopPctBySetup[nextItem.setup_type] ?? 4.0;
+    const close = nextItem.close ?? 0;
+    const rawStop = close * (1 - stopPct / 100);
+    const roundedToTick = Math.round(rawStop * 20) / 20;
+    return roundedToTick.toFixed(2);
+  }
 
   useEffect(() => {
     if (!isExecuting || !item || entryPrice <= 0 || !stopPrice || accountSize <= 0) {
@@ -152,6 +170,8 @@ function CandidateDetailPanel({
       })
       .then((payload) => {
         setQuote(payload);
+        // Seed the editable shares field with the server-computed value
+        setUserShares(String(payload.shares));
         setQuoteError(null);
       })
       .catch((err) => {
@@ -174,9 +194,12 @@ function CandidateDetailPanel({
     );
   }
 
+  // Resolved shares: user override takes precedence over computed quote
+  const resolvedShares = userShares !== "" ? Number(userShares) : (quote?.shares ?? 0);
+
   async function handleExecute(e: React.FormEvent) {
     e.preventDefault();
-    if (!quote || quote.shares <= 0) return;
+    if (!quote || resolvedShares <= 0) return;
     setIsSubmitting(true);
     try {
       const payload = {
@@ -185,8 +208,8 @@ function CandidateDetailPanel({
         entry_date: date,
         entry_price: entryPrice,
         stop_price: stopValue,
-        account_size: accountSize,
-        shares: quote.shares,
+        // Always send explicit shares so backend uses user-chosen quantity
+        shares: resolvedShares,
         grade: ""
       };
       
@@ -227,8 +250,21 @@ function CandidateDetailPanel({
           </label>
           <Metric label="Market Regime" value={quote?.market_verdict ?? "-"} />
           <Metric label="Risk Budget" value={quote ? `${formatCurrency(quote.risk_amount)} (${formatNumber(quote.risk_pct, 2)}%)` : "-"} />
-          <Metric label="Computed Shares" value={quoteLoading ? "Quoting..." : quote ? quote.shares.toString() : "-"} />
-          <Metric label="Position Value" value={quote ? formatCurrency(quote.position_value) : "-"} />
+          {/* Bug 2 fix: editable shares input — default is server-computed, user can override */}
+          <label style={{display: "flex", flexDirection: "column", gap: "4px"}}>
+            <span className="label">Shares to Buy {quoteLoading ? "(computing…)" : quote ? `(computed: ${quote.shares})` : ""}</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              required
+              value={userShares}
+              onChange={e => setUserShares(e.target.value)}
+              placeholder={quoteLoading ? "…" : quote ? String(quote.shares) : "-"}
+              style={{ background: "var(--bg-card)", color: "var(--text-main)", border: "1px solid var(--border-subtle)", borderRadius: "4px", padding: "4px" }}
+            />
+          </label>
+          <Metric label="Position Value" value={quote ? formatCurrency(resolvedShares * entryPrice) : "-"} />
           <Metric label="R Unit" value={quote ? formatCurrency(quote.r_unit) : "-"} />
           <Metric label="Max Position" value={quote ? formatCurrency(quote.max_position_value) : "-"} />
           {quoteError && (
@@ -238,15 +274,15 @@ function CandidateDetailPanel({
             </div>
           )}
           <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-            <button type="submit" disabled={isSubmitting || quoteLoading || !quote || quote.shares <= 0} style={{ fontWeight: "bold" }}>
-              {isSubmitting ? "Opening..." : "Confirm Trade"}
+            <button type="submit" disabled={isSubmitting || quoteLoading || !quote || resolvedShares <= 0} style={{ fontWeight: "bold" }}>
+              {isSubmitting ? "Opening…" : "Confirm Trade"}
             </button>
             <button type="button" onClick={() => setIsExecuting(false)}>Cancel</button>
           </div>
           {chartLoading ? (
             <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart…</div>
           ) : (
-            <CandleChart candles={candles} entryPrice={entryPrice} stopPrice={stopValue > 0 ? stopValue : undefined} height={220} />
+            <CandleChart candles={candles} entryPrice={entryPrice} stopPrice={stopValue > 0 ? stopValue : undefined} height={400} />
           )}
         </form>
       ) : (
@@ -258,7 +294,11 @@ function CandidateDetailPanel({
               {item.close ? (
                 <button 
                   type="button" 
-                  onClick={() => setIsExecuting(true)}
+                  onClick={() => {
+                    setStopPrice(defaultStopPrice(item));
+                    setUserShares("");
+                    setIsExecuting(true);
+                  }}
                   style={{ background: "#4caf50", color: "#fff", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" }}
                 >
                   Execute ⚡
@@ -278,7 +318,7 @@ function CandidateDetailPanel({
           {chartLoading ? (
             <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart…</div>
           ) : (
-            <CandleChart candles={candles} height={240} />
+            <CandleChart candles={candles} height={400} />
           )}
         </div>
       )}
@@ -295,6 +335,7 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
   const [selectedItem, setSelectedItem] = useState<WatchlistItem | null>(initialBriefing?.watchlist[0] ?? null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Bug 1 fix: filterType state now stores the canonical setup_type value ('EPISODIC_PIVOT', not 'EP')
   const [filterType, setFilterType] = useState('ALL');
   const [accountSize] = useAccountSize();
 
@@ -355,9 +396,16 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
         </div>
       )}
 
+      {/* Bug 1 fix: filter tab values match canonical DB setup_type strings.
+          'EP' is only the display label — the actual filter value is 'EPISODIC_PIVOT'. */}
       <div className="segmented" style={{ maxWidth: '600px', marginBottom: '20px', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
-        {['ALL', 'MOMENTUM_BURST', 'EP', 'TREND_INTENSITY'].map(t => (
-          <button key={t} className={filterType === t ? 'active' : ''} onClick={() => setFilterType(t)}>{t.replace('_', ' ')}</button>
+        {([
+          { value: 'ALL',             label: 'ALL' },
+          { value: 'MOMENTUM_BURST',  label: 'MB' },
+          { value: 'EPISODIC_PIVOT',  label: 'EP' },
+          { value: 'TREND_INTENSITY', label: 'TI' },
+        ] as const).map(({ value, label }) => (
+          <button key={value} className={filterType === value ? 'active' : ''} onClick={() => setFilterType(value)}>{label}</button>
         ))}
       </div>
 
