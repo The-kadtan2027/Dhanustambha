@@ -142,8 +142,8 @@ def fetch_live_ohlcv(
     # Tier 1: Try yfinance batch first
     try:
         yf_symbols = [f"{s}.NS" for s in remaining]
-        # Download 1d data. Interval 1m usually provides the most recent LTP and high/low.
-        data = yf.download(yf_symbols, period="1d", interval="1m", progress=False, threads=True, session=_yf_session)
+        # Download 1d data. Interval 1d fetches the daily candle containing live OHLCV without intraday bar bloat.
+        data = yf.download(yf_symbols, period="1d", interval="1d", progress=False, threads=True, session=_yf_session)
         if not data.empty:
             for s in list(remaining):
                 try:

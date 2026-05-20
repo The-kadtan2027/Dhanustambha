@@ -774,6 +774,8 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
     - Integrated "Live Briefing" button directly into the main Dashboard.
 ✅ 2026-05-20 — Bug fix: yfinance throttling caused noisy JSON decode errors logs; suppressed yfinance internal logger.
 ✅ 2026-05-20 — UX: Added Execute button directly to watchlist table rows in `scanner-client.tsx`.
+✅ 2026-05-20 — Bug fix: Live scanner timeouts resolved by switching yfinance interval from 1m to 1d.
+✅ 2026-05-20 — Bug fix: Watchlist UI duplicates prevented by adding date-based clear before insertion in DB.
 ```
 
 ---
@@ -801,6 +803,10 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 - ~~yfinance throttling caused noisy JSON errors in terminal~~ **RESOLVED 2026-05-20** — set yfinance logger to CRITICAL to suppress non-fatal parsing errors.
 
 - ~~Execute ⚡ button only available in detail panel~~ **RESOLVED 2026-05-20** — added Execute button directly in watchlist table rows and wired `isExecuting` state.
+
+- ~~Live scanner briefing takes several minutes due to heavy rate throttling~~ **RESOLVED 2026-05-20** — changed `yfinance` download interval from `1m` to `1d` to fetch single daily candles without throttling.
+
+- ~~Live scanner appends duplicated watchlist records when run multiple times~~ **RESOLVED 2026-05-20** — modified `save_watchlist` to delete the given date's entries before inserting new ones.
 
 - Phase 6 risk config needs an explicit decision before real paper-trade entry: current `config.py` uses `TRADE_RISK_PCT = 0.025` and `TRADE_MAX_POSITION_PCT = 0.25`, while the handoff language expected 1% risk and a max-position cap. The UI correctly reflects backend config, but the intended risk policy must be confirmed.
 

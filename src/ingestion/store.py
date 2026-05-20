@@ -433,12 +433,14 @@ def get_latest_watchlist_date() -> Optional[str]:
 
 
 def save_watchlist(entries: List[Dict]) -> None:
-    """Insert watchlist entries for a single scan day."""
+    """Insert watchlist entries for a single scan day, overwriting existing."""
     if not entries:
         return
 
+    date_val = entries[0]["date"]
     conn = get_connection()
     try:
+        conn.execute("DELETE FROM watchlist WHERE date = ?", (date_val,))
         conn.executemany(
             """
             INSERT INTO watchlist
@@ -449,7 +451,7 @@ def save_watchlist(entries: List[Dict]) -> None:
             entries,
         )
         conn.commit()
-        logger.info("Saved %d watchlist entries", len(entries))
+        logger.info("Saved %d watchlist entries for %s", len(entries), date_val)
     except sqlite3.OperationalError as exc:
         logger.error("Failed to save watchlist: %s", exc)
         raise
