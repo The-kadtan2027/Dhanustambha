@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import Link from "next/link";
 import BreadthGauges from "./components/BreadthGauges";
+import LiveScanController from "./components/LiveScanController";
 import {
   Activity,
   AlertTriangle,
@@ -58,7 +60,12 @@ function MarketPanel({ market, apiBaseUrl }: { market: Market | null; apiBaseUrl
             {market.verdict}
           </strong>
         </div>
-        <span className="datePill">{market.date}</span>
+        <div className="marketPanelActions">
+          <span className="datePill">{market.date}</span>
+          <Link className="textButton" href="/market">
+            <BarChart3 size={14} /> Full monitor
+          </Link>
+        </div>
       </div>
       <div className="metricGrid">
         <Metric label="Above MA20" value={`${formatNumber(market.pct_above_ma20)}%`} />
@@ -71,7 +78,7 @@ function MarketPanel({ market, apiBaseUrl }: { market: Market | null; apiBaseUrl
           value={`${formatNumber(market.advancing, 0)} / ${formatNumber(market.declining, 0)}`}
         />
       </div>
-      <BreadthGauges market={market} history={breadthHistory} />
+      <BreadthGauges market={market} history={breadthHistory} apiBaseUrl={apiBaseUrl} />
     </Card>
   );
 }
@@ -138,7 +145,29 @@ export default function DashboardClient({
   const [selectedDate, setSelectedDate] = useState(initialBriefing?.date ?? "");
   const [actionFilter, setActionFilter] = useState("ALL");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRunningBriefing, setIsRunningBriefing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleRunBriefing() {
+    setIsRunningBriefing(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBaseUrl}/briefing/run`, {
+        method: "POST"
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.detail ?? `Briefing run failed: ${res.status}`);
+      }
+      
+      // on success, fetch the latest standard dashboard data again
+      await loadDashboard("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Run briefing failed");
+    } finally {
+      setIsRunningBriefing(false);
+    }
+  }
 
   const apiUnavailable = !briefing && !actions && !summary;
   const knownDates = useMemo(() => {
@@ -176,6 +205,16 @@ export default function DashboardClient({
   return (
     <main className="shell">
       <div className="topbarControls" style={{ marginBottom: "16px" }}>
+        <button
+          onClick={handleRunBriefing}
+          disabled={isRunningBriefing}
+          style={{ background: "#4caf50", color: "#fff", border: "none", padding: "4px 12px", borderRadius: "4px", fontWeight: "bold", cursor: isRunningBriefing ? "not-allowed" : "pointer", fontSize: "13px" }}
+        >
+          {isRunningBriefing ? "Running EOD Briefing..." : "Run EOD Briefing ⚡"}
+        </button>
+        <span style={{ borderLeft: "1px solid var(--border-subtle)", margin: "0 8px", height: "24px" }} />
+        <LiveScanController apiBaseUrl={apiBaseUrl} onComplete={() => loadDashboard("")} label="Live Briefing 🚀" />
+        <span style={{ borderLeft: "1px solid var(--border-subtle)", margin: "0 8px", height: "24px" }} />
         <label className="dateControl">
           <span className="label">Briefing date</span>
           <select

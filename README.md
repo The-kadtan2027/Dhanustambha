@@ -32,18 +32,21 @@ A personal, zero-cost trading toolbox that implements the Stockbee momentum meth
 ### The five layers
 | Layer | Purpose | Status |
 |---|---|---|
-| 1 — Data ingestion | Pull NSE EOD OHLCV into SQLite | ✅ Complete (Phase 1) |
-| 2 — Market monitor | Breadth engine → Offensive/Defensive verdict | ✅ Complete (Phase 1) |
-| 3 — Setup scanner | Momentum Burst + EP + Trend Intensity scans | ✅ Complete (Phase 1 + calibrated) |
-| 4 — Trade management | Position sizing, open trade log, P&L | ✅ Complete (Phase 2) |
-| 5 — Review loop | Trade journal, setup analytics, backtester | ✅ Complete (Phase 3 scaffolding + calibration) |
+| 1 — Data ingestion | Pull NSE EOD OHLCV + Live LTP/OHLCV | ✅ Complete (Tiered) |
+| 2 — Market monitor | Breadth engine → Offensive/Defensive verdict | ✅ Complete (EOD/Live) |
+| 3 — Setup scanner | Momentum Burst + EP + Trend Intensity scans | ✅ Complete (EOD/Live) |
+| 4 — Trade management | Position sizing, open trade log, P&L | ✅ Complete |
+| 5 — Review loop | Trade journal, setup analytics, backtester | ✅ Complete |
+| 6 — Live Stream | Async progress scans + real-time LTP polling | ✅ Complete |
 
 ### Build order (recommended)
 **Phase 1 (MVP):** Layers 1 + 2 + core of Layer 3 → "Daily Morning Briefing" script ✅
 **Phase 2:** Layer 4 → Trade management ✅
 **Phase 3:** Layer 5 → Review and learning loop ✅
 **Phase 4:** UI (Next.js dashboard) on top of the Python/FastAPI backend ✅
-**Phase 5 (next):** TBD — see `docs/plans/PROGRESS.md` for current next actions
+**Phase 5:** Scanner Win-Rate R&D and feature calibration ✅
+**Phase 6:** Live Price Feed & "Somewhat Live" Scanners ✅
+**Phase 7 (next):** Paper Trading & Exit Mechanics Execution 🔄
 
 ---
 

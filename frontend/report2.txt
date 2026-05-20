@@ -1,0 +1,175 @@
+﻿node.exe : [2m[WebServer] [22m[33m[1mΓÜá[22m[39m Slow filesystem 
+detected. The benchmark took 279ms. If 
+D:\antigravity\Dhanustambha\frontend\.next/dev is a network drive, consider 
+moving it to a local folder.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([2m[WebServer]...a local folde 
+   r.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[2m[WebServer] [22mSee more: 
+https://nextjs.org/docs/app/guides/local-development
+
+Running 6 tests using 4 workers
+[2m[WebServer] [22mError: Route "/stock/[symbol]" used `params.symbol`. 
+`params` is a Promise and must be unwrapped with `await` or `React.use()` 
+before accessing its properties. Learn more: 
+https://nextjs.org/docs/messages/sync-dynamic-apis
+[2m[WebServer] [22m    at StockDetailPage 
+(app\stock\[symbol]\page.tsx:15:25)
+[2m[WebServer] [22m  [90m13 |[0m
+[2m[WebServer] [22m  [90m14 |[0m [36mexport[0m [36mdefault[0m 
+[36masync[0m [36mfunction[0m [33mStockDetailPage[0m({ params }: { 
+params: { symbol: string } }) {
+[2m[WebServer] [22m[31m[1m>[0m [90m15 |[0m   [36mconst[0m symbol = 
+params.symbol.toUpperCase();
+[2m[WebServer] [22m  [90m   |[0m                         [31m[1m^[0m
+[2m[WebServer] [22m  [90m16 |[0m   [36mconst[0m tradeData = 
+[36mawait[0m fetchJson<[33mTradesBySymbol[0m>([32m`/trades/by-symbol/[0
+m${symbol[32m}`[0m);
+[2m[WebServer] [22m  [90m17 |[0m   [36mreturn[0m 
+<[33mStockDetailClient[0m apiBaseUrl={[33mAPI_BASE_URL[0m} 
+symbol={symbol} initialTradeData={tr...
+[2m[WebServer] [22m  [90m18 |[0m }
+[2m[WebServer] [22m[31m[1mΓ¿»[22m[39m TypeError: Cannot read 
+properties of undefined (reading 'toUpperCase')
+[2m[WebServer] [22m    at StockDetailPage 
+(app\stock\[symbol]\page.tsx:15:32)
+[2m[WebServer] [22m  [90m13 |[0m
+[2m[WebServer] [22m  [90m14 |[0m [36mexport[0m [36mdefault[0m 
+[36masync[0m [36mfunction[0m [33mStockDetailPage[0m({ params }: { 
+params: { symbol: string } }) {
+[2m[WebServer] [22m[31m[1m>[0m [90m15 |[0m   [36mconst[0m symbol = 
+params.symbol.toUpperCase();
+[2m[WebServer] [22m  [90m   |[0m                                
+[31m[1m^[0m
+[2m[WebServer] [22m  [90m16 |[0m   [36mconst[0m tradeData = 
+[36mawait[0m fetchJson<[33mTradesBySymbol[0m>([32m`/trades/by-symbol/[0
+m${symbol[32m}`[0m);
+[2m[WebServer] [22m  [90m17 |[0m   [36mreturn[0m 
+<[33mStockDetailClient[0m apiBaseUrl={[33mAPI_BASE_URL[0m} 
+symbol={symbol} initialTradeData={tr...
+[2m[WebServer] [22m  [90m18 |[0m } {
+[2m[WebServer] [22m  digest: [32m'228775483'[39m
+[2m[WebServer] [22m}
+[2m[WebServer] [22m[36m[browser][39m [31mUncaught TypeError: Cannot 
+read properties of undefined (reading 'toUpperCase')[39m
+[2m[WebServer] [22m[31m    at StockDetailPage 
+(app\stock\[symbol]\page.tsx:15:32)[39m
+[2m[WebServer] [22m  13 |
+[2m[WebServer] [22m  14 | export default async function StockDetailPage({ 
+params }: { params: { symbol: string } }) {
+[2m[WebServer] [22m> 15 |   const symbol = params.symbol.toUpperCase();
+[2m[WebServer] [22m     |                                ^
+[2m[WebServer] [22m  16 |   const tradeData = await 
+fetchJson<TradesBySymbol>(`/trades/by-symbol/${symbol}`);
+[2m[WebServer] [22m  17 |   return <StockDetailClient 
+apiBaseUrl={API_BASE_URL} symbol={symbol} initialTradeData={tr...
+[2m[WebServer] [22m  18 | }
+[2m[WebServer] [22m[36m[browser][39m Failed to load portfolio 
+[31mTypeError: Failed to fetch[39m
+[2m[WebServer] [22m[31m    at PortfolioBar.useEffect 
+(app/components/PortfolioBar.tsx:11:5)[39m
+[2m[WebServer] [22m   9 |
+[2m[WebServer] [22m  10 |   useEffect(() => {
+[2m[WebServer] [22m> 11 |     fetch(`${apiBaseUrl}/trades/portfolio`)
+[2m[WebServer] [22m     |     ^
+[2m[WebServer] [22m  12 |       .then((r) => r.json())
+[2m[WebServer] [22m  13 |       .then(setData)
+[2m[WebServer] [22m  14 |       .catch((e) => console.error("Failed to 
+load portfolio", e)); [2m(app/components/PortfolioBar.tsx:14:29)[22m
+┬╖┬╖┬╖FFT
+
+  1) [chromium] ΓÇ║ tests\navigation.spec.ts:37:5 ΓÇ║ scanner execute ticket requests a backend quote ΓöÇΓöÇ
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('select')[22m
+    [2m    - locator resolved to <select disabled>ΓÇª</select>[22m
+    [2m  - attempting select option action[22m
+    [2m    2 ├ù waiting for element to be visible and enabled[22m
+    [2m      - element is not enabled[22m
+    [2m    - retrying select option action[22m
+    [2m    - waiting 20ms[22m
+    [2m    2 ├ù waiting for element to be visible and enabled[22m
+    [2m      - element is not enabled[22m
+    [2m    - retrying select option action[22m
+    [2m      - waiting 100ms[22m
+    [2m    55 ├ù waiting for element to be visible and enabled[22m
+    [2m       - element is not enabled[22m
+    [2m     - retrying select option action[22m
+    [2m       - waiting 500ms[22m
+
+
+      38 |   await page.goto('/scanners');
+      39 |
+    > 40 |   await page.locator('select').selectOption('2026-05-11');
+         |                                ^
+      41 |   await expect(page.getByText('5 candidates found')).toBeVisible({ timeout: 10000 });
+      42 |
+      43 |   await page.getByRole('button', { name: 'AFFLE' }).click();
+        at D:\antigravity\Dhanustambha\frontend\tests\navigation.spec.ts:40:32
+
+    Error Context: test-results\navigation-scanner-execute-ticket-requests-a-backend-quote-chromium\error-context.md
+
+  2) [chromium] ΓÇ║ tests\navigation.spec.ts:51:5 ΓÇ║ trade book shows card grid by default ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('.timeframeBtn').first()
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('.timeframeBtn').first()[22m
+
+
+      51 | test('trade book shows card grid by default', async ({ page }) => {
+      52 |   await page.goto('/trades');
+    > 53 |   await expect(page.locator('.timeframeBtn').first()).toBeVisible();
+         |                                                       ^
+      54 |   await expect(page.locator('h1')).toContainText(/Trade Book/i);
+      55 | });
+      56 |
+        at D:\antigravity\Dhanustambha\frontend\tests\navigation.spec.ts:53:55
+
+    Error Context: test-results\navigation-trade-book-shows-card-grid-by-default-chromium\error-context.md
+
+  3) [chromium] ΓÇ║ tests\navigation.spec.ts:57:5 ΓÇ║ stock detail route loads for a symbol ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: locator('h1')
+    Expected substring: [32m"RELIANCE"[39m
+    Received string:    [31m"This page couldnΓÇÖt load"[39m
+    Timeout: 5000ms
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 5000ms[22m
+    [2m  - waiting for locator('h1')[22m
+    [2m    8 ├ù locator resolved to <h1>This page couldnΓÇÖt load</h1>[22m
+    [2m      - unexpected value "This page couldnΓÇÖt load"[22m
+
+
+      57 | test('stock detail route loads for a symbol', async ({ page }) => {
+      58 |   await page.goto('/stock/RELIANCE');
+    > 59 |   await expect(page.locator('h1')).toContainText('RELIANCE');
+         |                                    ^
+      60 |   await expect(page.getByRole('button', { name: /back/i })).toBeVisible();
+      61 | });
+      62 |
+        at D:\antigravity\Dhanustambha\frontend\tests\navigation.spec.ts:59:36
+
+    Error Context: test-results\navigation-stock-detail-route-loads-for-a-symbol-chromium\error-context.md
+
+  3 failed
+    [chromium] ΓÇ║ tests\navigation.spec.ts:37:5 ΓÇ║ scanner execute ticket requests a backend quote ΓöÇΓöÇΓöÇ
+    [chromium] ΓÇ║ tests\navigation.spec.ts:51:5 ΓÇ║ trade book shows card grid by default ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    [chromium] ΓÇ║ tests\navigation.spec.ts:57:5 ΓÇ║ stock detail route loads for a symbol ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  3 passed (36.2s)

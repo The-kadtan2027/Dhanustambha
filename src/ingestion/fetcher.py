@@ -10,9 +10,11 @@ Fetch strategy (fastest to slowest):
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
+import re
 import time
+import requests
 from datetime import date, datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pandas as pd
 from nselib import capital_market
@@ -21,7 +23,213 @@ import yfinance as yf
 import config
 
 
+# Session for yfinance to reduce throttling
+_yf_session = requests.Session()
+_yf_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+})
+
 logger = logging.getLogger(__name__)
+
+# Suppress yfinance internal JSON-parse warnings.
+# When Yahoo Finance rate-limits a request it returns an empty body; yfinance logs
+# "Failed to get ticker '…' reason: Expecting value: line 1 column 1 (char 0)".
+# These are non-fatal: Tier 2 (Google scraper) and Tier 3 (DB fallback) handle
+# the missing data automatically, so the noise is suppressed here.
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+
+
+def _parse_google_volume(vol_str: str) -> Optional[int]:
+    """Convert volume strings like '1.2M' or '500K' to integers."""
+    vol_str = vol_str.strip().upper().replace(",", "")
+    if not vol_str:
+        return None
+    try:
+        multiplier = 1
+        if vol_str.endswith("K"):
+            multiplier = 1_000
+            vol_str = vol_str[:-1]
+        elif vol_str.endswith("M"):
+            multiplier = 1_000_000
+            vol_str = vol_str[:-1]
+        elif vol_str.endswith("B"):
+            multiplier = 1_000_000_000
+            vol_str = vol_str[:-1]
+        return int(float(vol_str) * multiplier)
+    except (ValueError, TypeError):
+        return None
+
+
+def _scrape_google_finance(symbol: str) -> Dict[str, Any]:
+    """Scrape live OHLCV data from Google Finance for a given NSE symbol."""
+    url = f"https://www.google.com/finance/quote/{symbol}:NSE"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    
+    data = {
+        "price": None,
+        "open": None,
+        "high": None,
+        "low": None,
+        "volume": None,
+        "source": "google_finance",
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=config.DATA_FETCH_TIMEOUT_SECONDS)
+        if response.status_code != 200:
+            return data
+
+        html = response.text
+        
+        # 1. Price (LTP)
+        match = re.search(r'data-last-price="([\d\.]+)"', html)
+        if not match:
+            match = re.search(r'₹\s?([\d,]+\.\d{2})', html)
+        if match:
+            data["price"] = float(match.group(1).replace(",", ""))
+
+        # 2. Open
+        # Look for "Open" followed by price in a nearby div/span
+        # Google uses a structure like: <div class="m617V">Open</div><div class="P6uYm">₹1,320.00</div>
+        match = re.search(r'Open</div><div[^>]*>₹?\s?([\d,]+\.\d{2})', html)
+        if match:
+            data["open"] = float(match.group(1).replace(",", ""))
+
+        # 3. Day Range (High/Low)
+        # Structure: <div class="m617V">Day range</div><div class="P6uYm">₹1,320.00 - ₹1,350.00</div>
+        match = re.search(r'Day range</div><div[^>]*>₹?\s?([\d,]+\.\d{2})\s?-\s?₹?\s?([\d,]+\.\d{2})', html)
+        if match:
+            data["low"] = float(match.group(1).replace(",", ""))
+            data["high"] = float(match.group(2).replace(",", ""))
+
+        # 4. Volume
+        # Structure: <div class="m617V">Volume</div><div class="P6uYm">1.25M</div>
+        match = re.search(r'Volume</div><div[^>]*>([\d\.,]+[KMB]?)', html)
+        if match:
+            data["volume"] = _parse_google_volume(match.group(1))
+
+        return data
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Google Finance scraper failed for %s: %s", symbol, exc)
+        return data
+
+
+def fetch_live_ohlcv(
+    symbols: Sequence[str], progress_callback: Optional[callable] = None
+) -> Dict[str, Dict[str, Any]]:
+    """Fetch full live OHLCV data for symbols with tiered fallbacks and optional progress tracking.
+    
+    Tiers:
+    1. yfinance (Batch) — fast but sometimes throttled.
+    2. Scraper (Google Finance) — parallel fallback for comprehensive OHLCV.
+    3. DB Fallback — last known EOD close as safety net.
+    """
+    results: Dict[str, Dict[str, Any]] = {}
+    if not symbols:
+        return results
+
+    total = len(symbols)
+    completed = 0
+    remaining = list(set(symbols))
+    timestamp = datetime.now().isoformat()
+
+    # Tier 1: Try yfinance batch first
+    try:
+        yf_symbols = [f"{s}.NS" for s in remaining]
+        # Download 1d data. Interval 1m usually provides the most recent LTP and high/low.
+        data = yf.download(yf_symbols, period="1d", interval="1m", progress=False, threads=True, session=_yf_session)
+        if not data.empty:
+            for s in list(remaining):
+                try:
+                    ticker = f"{s}.NS"
+                    if isinstance(data.columns, pd.MultiIndex):
+                        sym_data = data[ticker].dropna()
+                    else:
+                        sym_data = data.dropna()
+                    
+                    if not sym_data.empty:
+                        last = sym_data.iloc[-1]
+                        results[s] = {
+                            "open": float(last["Open"]),
+                            "high": float(last["High"]),
+                            "low": float(last["Low"]),
+                            "price": float(last["Close"]),
+                            "volume": int(last["Volume"]),
+                            "source": "yfinance",
+                            "timestamp": timestamp,
+                        }
+                        remaining.remove(s)
+                        completed += 1
+                except (KeyError, IndexError, ValueError, TypeError):
+                    continue
+    except Exception as e:
+        logger.warning("yfinance batch failed in fetch_live_ohlcv: %s", e)
+
+    if progress_callback:
+        progress_callback(completed, total)
+
+    # Tier 2: Parallel Google Scraper for missing symbols
+    if remaining:
+        start_t2 = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            future_to_symbol = {executor.submit(_scrape_google_finance, s): s for s in remaining}
+            for future in as_completed(future_to_symbol):
+                s = future_to_symbol[future]
+                try:
+                    data = future.result()
+                    if data.get("price"):
+                        data["timestamp"] = timestamp
+                        results[s] = data
+                        remaining.remove(s)
+                except Exception as e:
+                    logger.warning("Scraper failed for %s: %s", s, e)
+                
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, total)
+        
+        duration_t2 = time.perf_counter() - start_t2
+        logger.info("Tier 2 scraper finished: %d symbols fetched in %.2fs", total - len(remaining) - (completed - len(remaining)), duration_t2)
+
+    # Tier 3: DB Fallback for anything still missing (Last EOD)
+    if remaining:
+        from src.ingestion.store import get_ohlcv
+        for s in remaining:
+            df = get_ohlcv(s, days=1)
+            if not df.empty:
+                last = df.iloc[0]
+                results[s] = {
+                    "open": float(last["open"]),
+                    "high": float(last["high"]),
+                    "low": float(last["low"]),
+                    "price": float(last["close"]),
+                    "volume": int(last["volume"]),
+                    "source": "db_fallback",
+                    "timestamp": timestamp,
+                }
+            completed += 1
+            if progress_callback:
+                progress_callback(completed, total)
+
+    return results
+
+
+def fetch_live_prices(symbols: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+    """Backward compatible wrapper for fetch_live_ohlcv returning symbols -> {price, source, timestamp}."""
+    ohlcv_data = fetch_live_ohlcv(symbols)
+    # We strip down to the original format expected by existing API consumers
+    return {
+        s: {"price": d["price"], "source": d["source"], "timestamp": d["timestamp"]}
+        for s, d in ohlcv_data.items()
+    }
+
+
 
 
 def _parse_numeric(value: object) -> float:
@@ -172,6 +380,7 @@ def fetch_via_yfinance_batch(
             auto_adjust=False,
             progress=False,
             threads=True,
+            session=_yf_session
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("yfinance batch download failed: %s", exc)
@@ -256,6 +465,7 @@ def fetch_historical_via_yfinance_batch(
                 auto_adjust=False,
                 progress=False,
                 threads=True,
+                session=_yf_session
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("yfinance historical batch failed for chunk starting %d: %s", offset, exc)
@@ -402,6 +612,7 @@ def fetch_benchmark_history(
                 auto_adjust=False,
                 progress=False,
                 threads=False,
+                session=_yf_session,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
@@ -480,7 +691,7 @@ def fetch_via_yfinance(symbols: List[str], fetch_date: str) -> List[Dict]:
 
     for symbol in symbols:
         try:
-            ticker = yf.Ticker(f"{symbol}.NS")
+            ticker = yf.Ticker(f"{symbol}.NS", session=_yf_session)
             history = ticker.history(
                 start=start_date.isoformat(),
                 end=end_date.isoformat(),

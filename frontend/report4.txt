@@ -1,0 +1,24 @@
+﻿node.exe : [1A[2K[2m[WebServer] [22m[33m[1mΓÜá[22m[39m Slow 
+filesystem detected. The benchmark took 269ms. If 
+D:\antigravity\Dhanustambha\frontend\.next/dev is a network drive, consider 
+moving it to a local folder.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([1A[2K[2m[We...a local folde 
+   r.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[2m[WebServer] [22mSee more: 
+https://nextjs.org/docs/app/guides/local-development
+
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] ΓÇ║ tests\navigation.spec.ts:37:5 ΓÇ║ scanner execute ticket requests a backend quote
+[1A[2K  1 passed (7.0s)
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

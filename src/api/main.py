@@ -1,11 +1,15 @@
 """FastAPI endpoints for the Dhanustambha dashboard and manual trade workflow."""
 
 from __future__ import annotations
-
+from datetime import datetime
 from contextlib import asynccontextmanager
 import math
 from typing import Any, AsyncIterator, Dict, List, Optional
+import subprocess
 
+import threading
+import uuid
+import logging
 from pydantic import BaseModel
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -22,12 +26,56 @@ from src.ingestion.store import (
 )
 from src.trade.log import (
     build_open_trade_status,
+    build_portfolio_summary,
     close_trade,
     open_trade,
     summarize_closed_trades,
     update_stop_price,
 )
 from src.trade.sizer import calculate_position_size
+import time
+
+logger = logging.getLogger(__name__)
+
+# Stream I: Live Scan Job Store
+# job_id -> {status: "running"|"completed"|"failed", progress: int, candidates: int, error: str, start_time: str}
+LIVE_SCAN_JOBS: Dict[str, Dict[str, Any]] = {}
+
+class LiveScanStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    progress: int
+    candidates: int
+    error: Optional[str] = None
+    start_time: str
+    finish_time: Optional[str] = None
+
+
+class LivePriceCache:
+    """In-memory cache for live prices to avoid redundant external calls.
+
+    Refreshes data only if the last fetch was more than config.LIVE_PRICE_REFRESH_SECONDS ago.
+    """
+    def __init__(self):
+        self.data: Dict[str, Dict[str, Any]] = {}
+        self.last_fetch_time: float = 0
+
+    def get_prices(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        now = time.time()
+        # If cache is young, return from cache for available symbols
+        if now - self.last_fetch_time < config.LIVE_PRICE_REFRESH_SECONDS:
+            if all(s in self.data for s in symbols):
+                return {s: {**self.data[s], "is_cached": True} for s in symbols}
+
+        # Fetch fresh for requested symbols
+        from src.ingestion.fetcher import fetch_live_prices
+        fresh = fetch_live_prices(symbols)
+        self.data.update(fresh)
+        self.last_fetch_time = now
+        # Mark fresh results as not cached
+        return {s: {**self.data[s], "is_cached": False} for s in symbols}
+
+_price_cache = LivePriceCache()
 
 
 @asynccontextmanager
@@ -233,6 +281,24 @@ def watchlist_by_date(date: str) -> Dict[str, Any]:
     return _watchlist_payload(date)
 
 
+@app.get("/market/prices")
+def market_prices(symbols: str) -> Dict[str, Any]:
+    """Return 'live' prices for a comma-separated list of symbols.
+
+    Tiered fallback: yfinance -> Scraper -> DB close.
+    """
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not sym_list:
+        return {"items": {}}
+    
+    prices = _price_cache.get_prices(sym_list)
+    return {
+        "items": prices,
+        "timestamp": datetime.now().isoformat(),
+        "refresh_interval": config.LIVE_PRICE_REFRESH_SECONDS
+    }
+
+
 @app.get("/briefing/latest")
 def latest_briefing() -> Dict[str, Any]:
     """Return the latest stored briefing summary."""
@@ -365,9 +431,20 @@ def ohlcv_chart(symbol: str, days: int = 90) -> Dict[str, Any]:
 
 
 @app.get("/trades/open")
-def open_trades() -> Dict[str, Any]:
-    """Return open trades with current P&L and action flags."""
-    trades = build_open_trade_status()
+def open_trades(live: bool = False) -> Dict[str, Any]:
+    """Return open trades with current P&L and action flags.
+    
+    If live=True, fetches current prices to show real-time P&L.
+    """
+    current_prices = None
+    if live:
+        from src.ingestion.store import get_trades
+        active_symbols = get_trades(status=config.TRADE_DEFAULT_STATUS_OPEN)["symbol"].unique().tolist()
+        if active_symbols:
+            live_data = _price_cache.get_prices(active_symbols)
+            current_prices = {s: d["price"] for s, d in live_data.items() if "price" in d}
+
+    trades = build_open_trade_status(current_prices=current_prices)
     return {
         "count": int(len(trades)),
         "items": _records_from_dataframe(trades),
@@ -375,15 +452,52 @@ def open_trades() -> Dict[str, Any]:
 
 
 @app.get("/trades/actions")
-def trade_actions() -> Dict[str, Any]:
+def trade_actions(live: bool = False) -> Dict[str, Any]:
     """Return open trades that require management action."""
-    trades = build_open_trade_status()
+    current_prices = None
+    if live:
+        from src.ingestion.store import get_trades
+        active_symbols = get_trades(status=config.TRADE_DEFAULT_STATUS_OPEN)["symbol"].unique().tolist()
+        if active_symbols:
+            live_data = _price_cache.get_prices(active_symbols)
+            current_prices = {s: d["price"] for s, d in live_data.items() if "price" in d}
+
+    trades = build_open_trade_status(current_prices=current_prices)
     if not trades.empty and "action_required" in trades.columns:
         trades = trades[trades["action_required"] != "NONE"]
     return {
         "count": int(len(trades)),
         "items": _records_from_dataframe(trades),
     }
+
+@app.get("/trades/by-symbol/{symbol}")
+def trades_by_symbol(symbol: str) -> Dict[str, Any]:
+    """Return all trades (open and closed) for a given symbol."""
+    from src.ingestion.store import get_trades
+    all_trades = get_trades()
+    if not all_trades.empty:
+        filtered = all_trades[all_trades["symbol"] == symbol.upper()]
+    else:
+        filtered = all_trades
+    return {
+        "symbol": symbol.upper(),
+        "count": int(len(filtered)),
+        "trades": _records_from_dataframe(filtered),
+    }
+
+
+@app.get("/trades/portfolio")
+def trade_portfolio(live: bool = False) -> Dict[str, Any]:
+    """Return portfolio-level aggregates across all open trades."""
+    current_prices = None
+    if live:
+        from src.ingestion.store import get_trades
+        active_symbols = get_trades(status=config.TRADE_DEFAULT_STATUS_OPEN)["symbol"].unique().tolist()
+        if active_symbols:
+            live_data = _price_cache.get_prices(active_symbols)
+            current_prices = {s: d["price"] for s, d in live_data.items() if "price" in d}
+
+    return build_portfolio_summary(current_prices=current_prices)
 
 
 @app.get("/trades/summary")
@@ -426,3 +540,140 @@ def api_save_review(trade_id: int, req: TradeReviewRequest) -> Dict[str, Any]:
         review_date=req.review_date
     )
     return {"status": "saved", "trade_id": trade_id}
+
+
+@app.post("/briefing/run")
+def api_run_briefing() -> Dict[str, Any]:
+    """Manually trigger the daily briefing script."""
+    try:
+        result = subprocess.run(
+            ["python", "scripts/daily_briefing.py"],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Script failed: {result.stderr}")
+
+        return {
+            "status": "success",
+            "output": result.stdout,
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Script execution timed out")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Stream I: Live Market Scanner Endpoints
+
+def _run_live_scan_worker(job_id: str):
+    """Background worker to run the full briefing pipeline with live data."""
+    from src.ingestion.store import upsert_ohlcv, get_all_symbols_ohlcv, save_breadth, save_watchlist
+    from src.ingestion.symbols import get_universe_symbols
+    from src.ingestion.fetcher import fetch_live_ohlcv
+    from src.monitor.breadth import compute_breadth
+    from src.monitor.verdict import compute_verdict
+    from src.scanner.momentum_burst import detect_momentum_burst
+    from src.scanner.episodic_pivot import detect_episodic_pivot
+    from src.scanner.trend_intensity import detect_trend_intensity
+    from src.scanner.watchlist import merge_and_rank, export_watchlist
+    from datetime import date
+    
+    job = LIVE_SCAN_JOBS[job_id]
+    today = date.today().isoformat()
+    
+    try:
+        # 1. Discover active symbols for the configured universe
+        symbols = get_universe_symbols(config.UNIVERSE)
+        if not symbols:
+            job["status"] = "failed"
+            job["error"] = f"No active symbols found for universe '{config.UNIVERSE}'."
+            return
+
+        # 2. Fetch Live OHLCV (with progress)
+        def progress_cb(c, t):
+            job["progress"] = int((c / t) * 80)  # Scan is 80% of total work
+            
+        ohlcv_map = fetch_live_ohlcv(symbols, progress_callback=progress_cb)
+        
+        # 3. Upsert into DB for today
+        rows = []
+        for s, d in ohlcv_map.items():
+            if d.get("price") is not None:
+                rows.append({
+                    "symbol": s,
+                    "date": today,
+                    "open": d.get("open"),
+                    "high": d.get("high"),
+                    "low": d.get("low"),
+                    "close": d["price"],
+                    "volume": d.get("volume")
+                })
+        
+        if rows:
+            upsert_ohlcv(rows)
+        
+        # 4. Compute Breadth
+        job["status"] = "processing_breadth"
+        job["progress"] = 85
+        
+        # Fetch full history for today to calculate MAs (60 days lookback is sufficient)
+        full_df = get_all_symbols_ohlcv(today, lookback_days=config.BRIEFING_HISTORY_DAYS)
+        breadth_record = compute_breadth(full_df)
+        if breadth_record:
+            breadth_record["verdict"] = compute_verdict(breadth_record)
+            save_breadth(breadth_record)
+        
+        # 5. Run Scanners
+        job["status"] = "scanning"
+        job["progress"] = 90
+        
+        mb_results = detect_momentum_burst(full_df)
+        ep_results = detect_episodic_pivot(full_df)
+        ti_results = detect_trend_intensity(full_df)
+        
+        # 6. Build and Export Watchlist
+        # This ranks and saves to both CSV and SQLite
+        watchlist_df = merge_and_rank([mb_results, ep_results, ti_results], today)
+        export_watchlist(watchlist_df, today)
+        
+        # 7. Finalize
+        job["status"] = "completed"
+        job["progress"] = 100
+        job["candidates"] = len(watchlist_df)
+        job["finish_time"] = datetime.now().isoformat()
+        
+    except Exception as e:
+        logger.exception("Live scan worker failed for job %s", job_id)
+        job["status"] = "failed"
+        job["error"] = str(e)
+        job["finish_time"] = datetime.now().isoformat()
+
+
+@app.post("/briefing/live/start")
+def start_live_scan() -> Dict[str, str]:
+    """Start a background live scan job and return its ID."""
+    job_id = str(uuid.uuid4())
+    LIVE_SCAN_JOBS[job_id] = {
+        "job_id": job_id,
+        "status": "running",
+        "progress": 0,
+        "candidates": 0,
+        "error": None,
+        "start_time": datetime.now().isoformat(),
+        "finish_time": None
+    }
+    
+    thread = threading.Thread(target=_run_live_scan_worker, args=(job_id,), daemon=True)
+    thread.start()
+    
+    return {"job_id": job_id}
+
+
+@app.get("/briefing/live/status/{job_id}", response_model=LiveScanStatusResponse)
+def get_live_scan_status(job_id: str):
+    """Return the current status of a live scan job."""
+    if job_id not in LIVE_SCAN_JOBS:
+        raise HTTPException(status_code=404, detail="Job ID not found")
+    return LIVE_SCAN_JOBS[job_id]

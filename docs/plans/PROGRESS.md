@@ -2,9 +2,9 @@
 
 > Agents: update this file after every completed task. This is the project memory.
 
-**Last updated:** 2026-05-08
-**Current phase:** Phase 5 / Stream G - Scanner Win-Rate R&D
-**Active plan:** `docs/superpowers/plans/2026-05-07-scanner-winrate-rd-plan.md`
+**Last updated:** 2026-05-17
+**Current phase:** Phase 6 - Paper Trading
+**Active plan:** `docs/superpowers/plans/2026-05-16-interactive-trade-book.md`
 
 ## Phase Status
 
@@ -14,7 +14,8 @@
 | Phase 2 | Trade Management: position sizer, open trade log, P&L | Core workflow implemented |
 | Phase 3 | Review Loop: journal, analytics, backtester | Backtesting/calibration scaffolding implemented |
 | Phase 4 | FastAPI + Next.js UI dashboard | Completed through F4; live validation ongoing |
-| Phase 5 / Stream G | Scanner Win-Rate R&D: feature analysis, validation, and scanner-quality promotion gates | In progress |
+| Phase 5 / Stream G | Scanner Win-Rate R&D: feature analysis, validation, and scanner-quality promotion gates | Complete |
+| Phase 6 | Paper Trading & Exit Mechanics Execution | In progress |
 
 ## Completed Tasks
 
@@ -84,13 +85,19 @@
 - 2026-05-08 - Stream G Task 10 TI RS-band full-grid validation completed: `relative_strength_vs_benchmark_3m:2.4..6.7` **FAILED** full-grid — signal count choked (6–12 signals over H1 window), no generalisation beyond smoke sample. TI RS live filter **not promoted**.
 - 2026-05-08 - Stream G G3 tests added: `test_mb_prior_run_filter_rejects_extended_stock` and `test_ti_pullback_filter_rejects_deep_pullback` added to scanner test suite to explicitly verify G2-validated live filter rejection behaviour.
 - 2026-05-16 - Dashboard production-grade execution slice: added backend `/trades/quote` risk sizing, enforced server-calculated shares in `/trades/open` when `account_size` is supplied, and updated the dashboard trade ticket to display backend-derived risk, position value, R unit, max position, and market regime before confirmation.
+- 2026-05-17 - Backtest handoff verification: `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` already uses a test-local `MB_MAX_PRIOR_RUN` monkeypatch, and the focused test plus full `tests/test_backtest.py` suite pass. No source-code fix was required; the stale "must fix next" handoff was removed.
+- 2026-05-17 - Trade ticket live validation fix: scanner execution now seeds a setup-aware default stop loss before requesting `/trades/quote`, so the backend quote populates and `Confirm Trade` enables only after valid server sizing. Added Playwright coverage for the quote path and cancelled the live validation ticket without creating an open trade.
+- 2026-05-17 - Dedicated Market Monitor page: added `/market` as a full-width market breadth view with regime summary, MA/up-volume/net-high-low metrics, advance/decline panels, corrected green/red net A/D bars, timeframe controls, and dashboard/sidebar navigation links.
+- 2026-05-20 - Stream H: Live Price Feed (LTP) implemented with `LivePriceCache` and Tiered Fetcher.
+- 2026-05-20 - Stream I: "Somewhat Live" Market Scanner implemented with async briefing pipeline and Dashboard integration.
+- 2026-05-20 - Performance: Optimized DB queries (60-day lookback) and increased fetcher concurrency (50 threads).
 
 ## In Progress
 
 - Running the briefing live each weekday to accumulate NSE breadth history
 - Monitoring the calibrated scanner defaults in live daily briefings
 - Validating the Phase 4 dashboard against live daily briefing data after each market close
-- Executing Stream G against the current plan: scanner feature analysis, EP quality-filter validation, MB/TI rehabilitation checks, and only then any live scanner promotion/demotion.
+- Phase 6 paper trading validation with the interactive Trade Book and backend-enforced risk sizing.
 - Observing the disabled-by-default EP quality filter candidate (`EP_MAX_GAP_VOLUME_RATIO = 4.9` when enabled manually) before deciding whether it should become a live default.
 - Monitoring the updated live EP defaults (`5.0 / 3.0 / 2`) in daily briefings to confirm they surface timely candidates without degrading quality; initial raw EP checks recovered `RAILTEL` across 2026-04-15/16/17 while still staying selective on 2026-04-20/21, and exported April watchlists now distinguish the winning `setup_type` from `matched_setups`
 - Keeping Momentum Burst and Trend Intensity live defaults unchanged until a longer-window or signal-level review produces stronger evidence than the Jan-Jun 2025 window alone
@@ -111,12 +118,26 @@
 ## Noted Issues
 
 - `src/review/market_regime.py` from the follow-on plan is intentionally deferred for now; current calibration/backtesting work proceeds without market-regime classification until regime-aware analysis is explicitly prioritized.
-- The older multi-stream follow-on plan remains in `docs/plans/implementation_plan.md` for historical context; the active implementation plan is now Stream G under `docs/superpowers/plans/2026-05-07-scanner-winrate-rd-plan.md`.
+- The older multi-stream follow-on plan remains in `docs/plans/implementation_plan.md` for historical context; the active implementation plan is now Phase 6 under `docs/superpowers/plans/2026-05-16-interactive-trade-book.md`.
 - Stream D intentionally stops short of intraday ORB execution modelling; EP research remains EOD-first until a future architecture decision explicitly expands the data model beyond ADR-004.
 - Stream G must not hard-code `gap_vol_ratio<=4.9` as a live EP default yet. Current evidence supports a disabled-by-default research/paper-trading observation filter only.
 - [x] Legacy OHLCV rows for `TATAMOTORS` have been mapped and aliased cleanly to `TMCV` in the historical backend.
 - The current environment has no default `python`/`py` command on `PATH`; use `C:\Program Files\Python312\python.exe` for manual local runs from PowerShell unless the shell environment is updated.
 - Final exported watchlists record one winning `setup_type` per symbol by design; use the `matched_setups` column in CSV/briefing output when validating whether EP or another scanner also triggered on the same symbol.
+- Phase 6 risk config needs an explicit decision before real paper-trade entry: current `config.py` uses `TRADE_RISK_PCT = 0.025` and `TRADE_MAX_POSITION_PCT = 0.25`, while the handoff language expected 1% risk and a max-position cap. The UI correctly reflects backend config, but the intended risk policy must be confirmed.
+
+## Deviations from Plan
+
+- `requirements.txt` includes `nselib==2.4.6`; fetcher uses `nselib` bhavcopy as the primary live NSE source.
+- Historical backfill now uses `nselib.capital_market.price_volume_data()` as the primary source because `yfinance` batch history returned empty/no-timezone responses for many NSE tickers during calibration backfill.
+- `requirements.txt` uses `nsepy==0.8` (not `0.8.2`, which is unavailable on PyPI).
+- `requirements.txt` uses `pandas-ta-classic==0.3.14b2`.
+- `requirements.txt` uses `numpy==2.2.6`.
+- `fetch_via_yfinance()` queries an explicit date window around `fetch_date` so historical overrides work during validation.
+- `daily_briefing.py` incrementally backfills missing business-day history before computing breadth and scanners.
+- `NIFTY750` is implemented as `NIFTY500 + MICROCAP250` because official NSE constituent data shows `SMALLCAP250` overlaps fully with `NIFTY500`.
+- `trade_manager.py` is an interactive CLI rather than a CSV-driven workflow.
+- `calibrate_thresholds.py` ranks parameter sets by 10-day forward win rate first, then average 10-day return and signal count.
 
 ## Deviations from Plan
 
@@ -140,6 +161,6 @@
 
 ## Next Action
 
-1. **Noted pre-existing test failure:** `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` fails because synthetic close series does not satisfy `MB_MAX_PRIOR_RUN = -2.3` (was always failing after the G2 filter was promoted to live). Fix by relaxing synthetic data's prior-run in the test or monkeypatching `MB_MAX_PRIOR_RUN` in the fixture.
-2. Decide on Task 9 (reference-only scanner demotion): MB and TI each have one validated live filter now; the question is whether the remaining signal quality is sufficient to keep them in the main watchlist, or whether a `REFERENCE_ONLY_SCANNERS` demotion gate is warranted.
-3. Continue running daily briefing and Phase 4 dashboard validation in parallel. Paper trading begins when stream G demotion/promotion decisions are finalised.
+1. **Resolve Phase 6 risk policy:** Decide whether live paper trading should use current config (`TRADE_RISK_PCT = 0.025`, `TRADE_MAX_POSITION_PCT = 0.25`) or the handoff-stated 1% risk / max-position cap, then update `config.py` and docs if needed.
+2. Continue Trade Book live testing by opening a controlled paper trade only after the risk policy is confirmed.
+3. Continue daily live monitoring and keep `EP_MAX_GAP_VOLUME_RATIO = 4.9` as a disabled-by-default observation filter until a longer window justifies promotion.

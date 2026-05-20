@@ -162,24 +162,29 @@ def get_ohlcv(symbol: str, days: int = 252) -> pd.DataFrame:
         conn.close()
 
 
-def get_all_symbols_ohlcv(date: str, lookback_days: int = 252) -> pd.DataFrame:
-    """Return OHLCV data for all symbols up to a given date."""
+def get_all_symbols_ohlcv(date_str: str, lookback_days: int = 60) -> pd.DataFrame:
+    """Return OHLCV data for all symbols up to a given date, with a business day lookback."""
     conn = get_connection()
     try:
+        # Calculate start date using business days
+        start_date = (
+            pd.Timestamp(date_str) - pd.tseries.offsets.BDay(lookback_days)
+        ).date().isoformat()
+        
         df = pd.read_sql(
             """
             SELECT symbol, date, open, high, low, close, volume
             FROM ohlcv
-            WHERE date <= ?
+            WHERE date >= ? AND date <= ?
             ORDER BY symbol, date
             """,
             conn,
-            params=(date,),
+            params=(start_date, date_str),
         )
         df["date"] = pd.to_datetime(df["date"])
         return df
     except sqlite3.OperationalError as exc:
-        logger.error("Failed to fetch all symbols OHLCV for %s: %s", date, exc)
+        logger.error("Failed to fetch all symbols OHLCV for %s: %s", date_str, exc)
         raise
     finally:
         conn.close()
@@ -619,5 +624,19 @@ def get_closed_trades() -> List[Dict]:
     except sqlite3.OperationalError as exc:
         logger.error("Failed to fetch closed trades: %s", exc)
         raise
+    finally:
+        conn.close()
+
+
+def get_active_symbols() -> List[str]:
+    """Return a list of symbols currently marked as active in the database."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT symbol FROM symbols WHERE active = 1")
+        return [row[0] for row in cursor.fetchall()]
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to fetch active symbols: %s", exc)
+        return []
     finally:
         conn.close()

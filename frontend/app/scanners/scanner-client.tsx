@@ -11,6 +11,7 @@ import Metric from '../components/ui/Metric';
 import CandleChart, { type Candle } from '../components/CandleChart';
 import { Target, AlertTriangle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import LiveScanController from "../components/LiveScanController";
 
 type ScannerClientProps = {
   apiBaseUrl: string;
@@ -21,11 +22,15 @@ type ScannerClientProps = {
 function WatchlistPanel({
   items,
   selectedItem,
-  onSelect
+  onSelect,
+  onExecute,
+  livePrices
 }: {
   items: WatchlistItem[];
   selectedItem: WatchlistItem | null;
   onSelect: (item: WatchlistItem) => void;
+  onExecute: (item: WatchlistItem) => void;
+  livePrices: Record<string, { price: number; is_cached: boolean }>;
 }) {
   return (
     <Card title="Watchlist Candidates" icon={<Target size={18} />} className="wide">
@@ -41,7 +46,9 @@ function WatchlistPanel({
                 <th className="num">% Chg</th>
                 <th className="num">Vol</th>
                 <th className="num">Close</th>
+                <th className="num">LTP</th>
                 <th className="num">Score</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -50,6 +57,8 @@ function WatchlistPanel({
                 const isSelected =
                   selectedItem?.symbol === item.symbol &&
                   selectedItem?.setup_type === item.setup_type;
+                const live = livePrices[item.symbol];
+
                 return (
                   <tr
                     className={isSelected ? "selectedRow" : ""}
@@ -65,7 +74,22 @@ function WatchlistPanel({
                     <td className="num">{formatNumber(item.pct_change)}%</td>
                     <td className="num">{formatNumber(item.volume_ratio, 1)}x</td>
                     <td className="num">{formatCurrency(item.close)}</td>
+                    <td className={`num ${live ? 'livePrice' : ''}`}>
+                      {live ? formatCurrency(live.price) : '-'}
+                    </td>
                     <td className="num">{formatNumber(item.score, 2)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExecute(item);
+                        }}
+                        style={{ background: "#4caf50", color: "#fff", border: "none", padding: "2px 6px", borderRadius: "4px", cursor: "pointer", fontSize: "11px", fontWeight: "bold" }}
+                      >
+                        Execute ⚡
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -84,15 +108,20 @@ function CandidateDetailPanel({
   accountSize, 
   apiBaseUrl, 
   date,
+  livePrice,
+  isExecuting,
+  setIsExecuting,
   onTradeOpened 
 }: { 
   item: WatchlistItem | null;
   accountSize: number;
   apiBaseUrl: string;
   date: string;
+  livePrice?: number;
+  isExecuting: boolean;
+  setIsExecuting: (val: boolean) => void;
   onTradeOpened: () => void;
 }) {
-  const [isExecuting, setIsExecuting] = useState(false);
   const [stopPrice, setStopPrice] = useState("");
   // Bug 2 fix: editable shares field — seeded from server quote, overrideable by user
   const [userShares, setUserShares] = useState<string>("");
@@ -104,12 +133,18 @@ function CandidateDetailPanel({
   const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
-    setIsExecuting(false);
     setStopPrice("");
     setUserShares("");
     setQuote(null);
     setQuoteError(null);
   }, [item]);
+
+  useEffect(() => {
+    if (isExecuting && item && !stopPrice) {
+      setStopPrice(defaultStopPrice(item));
+      setUserShares("");
+    }
+  }, [isExecuting, item]);
 
   useEffect(() => {
     if (!item) { setCandles([]); return; }
@@ -121,7 +156,7 @@ function CandidateDetailPanel({
       .finally(() => setChartLoading(false));
   }, [item, apiBaseUrl]);
 
-  const entryPrice = item?.close ?? 0;
+  const entryPrice = livePrice || item?.close || 0;
   const stopValue = Number(stopPrice);
 
   function defaultStopPrice(nextItem: WatchlistItem): string {
@@ -310,7 +345,8 @@ function CandidateDetailPanel({
           <Metric label="Score" value={formatNumber(item.score, 2)} />
           <Metric label="Move" value={`${formatNumber(item.pct_change)}%`} />
           <Metric label="Volume" value={`${formatNumber(item.volume_ratio, 1)}x`} />
-          <Metric label="Close" value={formatCurrency(item.close)} />
+          <Metric label="EOD Close" value={formatCurrency(item.close)} />
+          <Metric label="Live Price (LTP)" value={livePrice ? formatCurrency(livePrice) : "-"} highlight={!!livePrice} />
           <div className="notesBox">
             <span className="label">Notes</span>
             <p>{item.notes || "-"}</p>
@@ -327,17 +363,39 @@ function CandidateDetailPanel({
 }
 
 
-
 export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDates }: ScannerClientProps) {
   const [briefing, setBriefing] = useState(initialBriefing);
   const [dates, setDates] = useState(initialDates?.items ?? []);
   const [selectedDate, setSelectedDate] = useState(initialBriefing?.date ?? '');
   const [selectedItem, setSelectedItem] = useState<WatchlistItem | null>(initialBriefing?.watchlist[0] ?? null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [livePrices, setLivePrices] = useState<Record<string, { price: number; is_cached: boolean }>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Bug 1 fix: filterType state now stores the canonical setup_type value ('EPISODIC_PIVOT', not 'EP')
   const [filterType, setFilterType] = useState('ALL');
   const [accountSize] = useAccountSize();
+
+  // Stream H: Live Price Polling
+  useEffect(() => {
+    if (!briefing || briefing.watchlist.length === 0) return;
+    
+    let isMounted = true;
+    const symbols = Array.from(new Set(briefing.watchlist.map(i => i.symbol))).join(',');
+    
+    async function fetchLive() {
+      try {
+        const data = await fetchJson<{ items: typeof livePrices }>(apiBaseUrl, `/market/prices?symbols=${symbols}`);
+        if (isMounted) setLivePrices(data.items);
+      } catch (err) {
+        console.warn('Live price fetch failed:', err);
+      }
+    }
+
+    fetchLive();
+    const timer = setInterval(fetchLive, 60000); // 1 minute refresh
+    return () => { isMounted = false; clearInterval(timer); };
+  }, [briefing, apiBaseUrl]);
 
   const knownDates = useMemo(() => {
     if (selectedDate && !dates.includes(selectedDate)) return [selectedDate, ...dates];
@@ -378,6 +436,7 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
           <p>{filteredWatchlist.length} candidates found</p>
         </div>
         <div className="topbarControls">
+          <LiveScanController apiBaseUrl={apiBaseUrl} onComplete={() => loadScanners('')} />
           <label className="dateControl">
             <span className="label">Briefing date</span>
             <select disabled={knownDates.length === 0 || isLoading} onChange={(e) => loadScanners(e.target.value)} value={selectedDate}>
@@ -392,7 +451,7 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
         <div className="errorBanner">
           <AlertTriangle size={16} />
           <span>{error}</span>
-          <button onClick={() => loadScanners(selectedDate)}>Retry</button>
+          <button onClick={() => loadScanners(selectedDate)} type="button">Retry</button>
         </div>
       )}
 
@@ -405,13 +464,28 @@ export default function ScannerClient({ apiBaseUrl, initialBriefing, initialDate
           { value: 'EPISODIC_PIVOT',  label: 'EP' },
           { value: 'TREND_INTENSITY', label: 'TI' },
         ] as const).map(({ value, label }) => (
-          <button key={value} className={filterType === value ? 'active' : ''} onClick={() => setFilterType(value)}>{label}</button>
+          <button key={value} className={filterType === value ? 'active' : ''} onClick={() => setFilterType(value)} type="button">{label}</button>
         ))}
       </div>
 
       <section className="grid">
-        <WatchlistPanel items={filteredWatchlist} selectedItem={selectedItem} onSelect={setSelectedItem} />
-        <CandidateDetailPanel item={selectedItem} accountSize={accountSize} apiBaseUrl={apiBaseUrl} date={briefing?.date || selectedDate} onTradeOpened={() => loadScanners(selectedDate)} />
+        <WatchlistPanel 
+          items={filteredWatchlist} 
+          selectedItem={selectedItem} 
+          onSelect={(i) => { setSelectedItem(i); setIsExecuting(false); }} 
+          onExecute={(i) => { setSelectedItem(i); setIsExecuting(true); }}
+          livePrices={livePrices}
+        />
+        <CandidateDetailPanel 
+          item={selectedItem} 
+          accountSize={accountSize} 
+          apiBaseUrl={apiBaseUrl} 
+          date={briefing?.date || selectedDate} 
+          livePrice={selectedItem ? livePrices[selectedItem.symbol]?.price : undefined}
+          isExecuting={isExecuting}
+          setIsExecuting={setIsExecuting}
+          onTradeOpened={() => { loadScanners(selectedDate); setIsExecuting(false); }} 
+        />
       </section>
     </main>
   );

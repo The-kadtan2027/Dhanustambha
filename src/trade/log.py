@@ -208,22 +208,32 @@ def determine_action_required(
     return "NONE"
 
 
-def build_open_trade_status(as_of_date: Optional[str] = None) -> pd.DataFrame:
-    """Return open trades augmented with price, P&L, holding age, and action flags."""
+def build_open_trade_status(
+    as_of_date: Optional[str] = None, current_prices: Optional[Dict[str, float]] = None
+) -> pd.DataFrame:
+    """Return open trades augmented with price, P&L, holding age, and action flags.
+
+    If current_prices is provided, it is used instead of the latest stored EOD close.
+    """
     open_trades = get_open_trades()
     if open_trades.empty:
         return open_trades
 
     status_df = open_trades.copy()
-    current_prices = []
+    current_prices_list = []
     unrealized_pnls = []
     pct_gains = []
     days_held_values = []
     actions_required = []
 
     for _, row in status_df.iterrows():
-        latest_close = get_latest_close(str(row["symbol"]), up_to_date=as_of_date)
-        current_prices.append(latest_close)
+        symbol = str(row["symbol"])
+        if current_prices and symbol in current_prices:
+            latest_close = current_prices[symbol]
+        else:
+            latest_close = get_latest_close(symbol, up_to_date=as_of_date)
+        
+        current_prices_list.append(latest_close)
         if latest_close is None:
             unrealized_pnls.append(None)
             pct_gain = None
@@ -259,7 +269,7 @@ def build_open_trade_status(as_of_date: Optional[str] = None) -> pd.DataFrame:
             )
         )
 
-    status_df["current_close"] = current_prices
+    status_df["current_close"] = current_prices_list
     status_df["unrealized_pnl"] = unrealized_pnls
     status_df["pct_gain"] = pct_gains
     status_df["days_held"] = days_held_values
@@ -271,3 +281,33 @@ def summarize_closed_trades(last_n_days: int = 90) -> Dict[str, float]:
     """Summarize closed trades using expectancy-style metrics."""
     closed = get_closed_trades(last_n_days=last_n_days)
     return compute_expectancy(closed)
+
+
+def build_portfolio_summary(current_prices: Optional[Dict[str, float]] = None) -> dict:
+    """Return portfolio-level aggregates for all open trades."""
+    trades = build_open_trade_status(current_prices=current_prices)
+    if trades.empty:
+        return {
+            "trade_count": 0,
+            "total_invested": 0.0,
+            "total_pnl": 0.0,
+            "open_risk": 0.0,
+            "locked_profit": 0.0,
+        }
+
+    total_invested = float((trades["entry_price"] * trades["shares"]).sum())
+    total_pnl = float(trades["unrealized_pnl"].fillna(0).sum())
+    # open_risk = sum of money at risk if stop is hit
+    open_risk = float(((trades["entry_price"] - trades["stop_price"]) * trades["shares"]).sum())
+    # locked_profit = money protected when stop > entry (trailing to profit)
+    trades["stop_above_entry"] = (trades["stop_price"] > trades["entry_price"]).astype(float)
+    locked_profit = float(
+        ((trades["stop_price"] - trades["entry_price"]) * trades["shares"] * trades["stop_above_entry"]).sum()
+    )
+    return {
+        "trade_count": int(len(trades)),
+        "total_invested": round(total_invested, 2),
+        "total_pnl": round(total_pnl, 2),
+        "open_risk": round(open_risk, 2),
+        "locked_profit": round(locked_profit, 2),
+    }

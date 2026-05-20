@@ -6,6 +6,7 @@ import { formatNumber, formatCurrency, setupLabel } from '../../lib/format';
 import SummaryPanel from '../components/ui/SummaryPanel';
 import Card from '../components/ui/Card';
 import { Activity, BookOpen, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
 
 type JournalClientProps = {
   apiBaseUrl: string;
@@ -95,7 +96,7 @@ export default function JournalClient({ apiBaseUrl, initialClosedTrades, initial
               <tbody>
                 {trades.map(t => (
                   <tr key={t.id} onClick={() => handleSelect(t)} className={activeTrade?.id === t.id ? "selectedRow" : ""} style={{cursor: "pointer"}}>
-                    <td><strong>{t.symbol}</strong></td>
+                    <td><Link href={`/stock/${t.symbol}`} style={{ fontWeight: 700, color: "var(--blue)" }}>{t.symbol}</Link></td>
                     <td>{t.setup_type}</td>
                     <td className="num">{formatCurrency(t.entry_price)}</td>
                     <td className="num">{formatCurrency(t.exit_price ?? t.current_close)}</td>

@@ -26,7 +26,7 @@ UNIVERSE_REFRESH_DAYS = 7
 MM_OFFENSIVE_MA20_PCT = 55.0      # % of universe above 20-day SMA → OFFENSIVE
 MM_OFFENSIVE_UPVOL_RATIO = 0.60   # Up-volume / total-volume ratio → OFFENSIVE
 MM_OFFENSIVE_HIGHS_VS_LOWS = 2.0  # new_highs >= new_lows * this → OFFENSIVE
-MM_DEFENSIVE_MA20_PCT = 45.0      # % above MA20 floor for DEFENSIVE (vs AVOID)
+MM_DEFENSIVE_MA20_PCT = 35.0      # % above MA20 floor for DEFENSIVE (vs AVOID)
 
 # ---------------------------------------------------------------------------
 # Momentum Burst scanner thresholds
@@ -111,3 +111,10 @@ DATA_FETCH_RETRY_ATTEMPTS = 3
 DATA_FETCH_TIMEOUT_SECONDS = 30
 DATA_PULL_TIME = "16:30"
 DATA_PULL_GRACE_MINUTES = 30
+
+# ---------------------------------------------------------------------------
+# Live Price Feed (Stream H)
+# ---------------------------------------------------------------------------
+LIVE_PRICE_REFRESH_SECONDS = 60  # Default 1 minute for dashboard polling
+LIVE_PRICE_CACHE_TTL = 300      # 5 minute hard expiration for backend safety
+

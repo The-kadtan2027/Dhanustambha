@@ -64,7 +64,13 @@ NSE/BSE Market (3:30 PM close)
          ┌─────────────────┐
          │  FastAPI + UI   │  (Phase 3+)
          │  Next.js dash   │
-         └─────────────────┘
+         └────────┬────────┘
+                  │
+                  ▼ [Stream H/I]
+         ┌─────────────────────┐
+         │  Live Scan Worker   │  (Async Background Thread)
+         │  yfinance -> Google  │  (Tiered Fetcher)
+         └─────────────────────┘
 ```
 
 ---
@@ -360,10 +366,21 @@ DATA_PULL_TIME = "16:30"
 
 ---
 
-## Error Handling Philosophy
+## Layer 6 — Live Stream (Stream H & I)
 
-- **Data fetch failures:** Log the symbol, continue with the rest. If > 10% fail, abort and alert.
-- **SQLite errors:** Always wrap in try/except. Log with full context. Never silently swallow.
-- **Scanner errors:** A crash in one scanner should not stop the others. Run each independently.
-- **Missing data:** If a symbol has < 60 days of history, skip it for any scan that requires a 50-day lookback. Log it at DEBUG level.
-- **No data for today:** If it's a market holiday, the fetcher gets no data. This is expected. Log at INFO and exit cleanly.
+### Responsibility
+Provide real-time price updates (LTP) and on-demand "Somewhat Live" market scans during trading hours.
+
+### Tiered Live Fetching (ADR-009)
+To ensure high availability without expensive API keys, the system uses a tiered approach for live data:
+1. **yfinance (Batch):** Primary source. Fast (one request for 500 symbols) but prone to throttling.
+2. **Google Finance Scraper:** Fallback. Parallelized with 50 threads to ensure every symbol is fetched even if Yahoo fails.
+3. **SQLite DB:** Last resort. Uses the previous day's EOD close if all live sources fail, ensuring the scanner never crashes.
+
+### Async Scan Pipeline
+Live scans are offloaded to a background thread to keep the API responsive:
+1. **Trigger:** Frontend `POST /briefing/live/start` creates a unique Job ID.
+2. **Discovery:** Fetcher identifies active symbols for the configured universe.
+3. **Fetch:** Tiered fetcher pulls live OHLCV and updates an in-memory job status.
+4. **Processing:** Broad breadth and individual setup scanners run on the fresh data.
+5. **Output:** Results are saved to the `watchlist` table with the current date, allowing them to appear on the Dashboard instantly.

@@ -45,6 +45,7 @@ export type Trade = {
   pct_gain: number | null;
   days_held: number | null;
   action_required: string;
+  exit_date?: string | null;
   exit_price?: number | null;
   pnl?: number | null;
   status?: string;
@@ -72,4 +73,18 @@ export type TradeQuote = {
   risk_pct: number;
   max_position_value: number;
   market_verdict: string;
+};
+
+export type PortfolioSummary = {
+  trade_count: number;
+  total_invested: number;
+  total_pnl: number;
+  open_risk: number;
+  locked_profit: number;
+};
+
+export type TradesBySymbol = {
+  symbol: string;
+  count: number;
+  trades: Trade[];
 };

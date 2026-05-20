@@ -1,5 +1,5 @@
-import TradeClient from "./trade-client";
-import type { TradeList, PortfolioSummary } from "../../types/api";
+import MarketClient from "./market-client";
+import type { Market } from "../../types/api";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -18,15 +18,17 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-export default async function TradesPage() {
-  const openTrades = await fetchJson<TradeList>("/trades/open");
-  const portfolio = await fetchJson<PortfolioSummary>("/trades/portfolio");
+export default async function MarketPage() {
+  const [latest, history] = await Promise.all([
+    fetchJson<Market>("/market/breadth/latest"),
+    fetchJson<{ count: number; items: Market[] }>("/market/breadth/history?days=90")
+  ]);
 
   return (
-    <TradeClient
+    <MarketClient
       apiBaseUrl={API_BASE_URL}
-      initialOpenTrades={openTrades}
-      initialPortfolio={portfolio}
+      initialHistory={history?.items ?? []}
+      initialMarket={latest}
     />
   );
 }

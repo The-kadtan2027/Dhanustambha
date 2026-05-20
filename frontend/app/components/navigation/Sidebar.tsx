@@ -12,6 +12,7 @@ export default function Sidebar() {
       <h2>Dhanustambha</h2>
       <div className="sidebarNav">
         <Link href="/" className={`sidebarNavItem ${pathname === "/" ? "active" : ""}`}>Dashboard</Link>
+        <Link href="/market" className={`sidebarNavItem ${pathname === "/market" ? "active" : ""}`}>Market Monitor</Link>
         <Link href="/scanners" className={`sidebarNavItem ${pathname === "/scanners" ? "active" : ""}`}>Scanners</Link>
         <Link href="/trades" className={`sidebarNavItem ${pathname === "/trades" ? "active" : ""}`}>Trade Book</Link>
         <Link href="/journal" className={`sidebarNavItem ${pathname === "/journal" ? "active" : ""}`}>Journal</Link>

@@ -319,6 +319,7 @@ def test_fetch_benchmark_history_normalizes_index_rows(monkeypatch):
     assert result[1]["close"] == 22180.0
 
 
+
 def test_fetch_benchmark_history_falls_back_to_proxy_ticker(monkeypatch):
     """fetch_benchmark_history should try fallback source tickers if the first source is empty."""
     raw = pd.DataFrame(
@@ -347,3 +348,10 @@ def test_fetch_benchmark_history_falls_back_to_proxy_ticker(monkeypatch):
     assert calls[:2] == ["^NSEI", "NIFTYBEES.NS"]
     assert len(result) == 1
     assert result[0]["symbol"] == "^NSEI"
+
+
+def test_yfinance_logger_suppressed():
+    """Verify that the yfinance internal logger is set to CRITICAL to avoid JSON parse noise."""
+    import logging
+    yf_logger = logging.getLogger("yfinance")
+    assert yf_logger.level == logging.CRITICAL

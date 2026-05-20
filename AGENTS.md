@@ -135,6 +135,11 @@ dhanustambha/
 │       └── main.py
 │
 ├── frontend/                   ← Next.js dashboard
+│   └── app/
+│       └── components/
+│           ├── LiveScanController.tsx ← Reusable async scan UI
+│           ├── BreadthGauges.tsx
+│           └── CandleChart.tsx
 │
 ├── scripts/
 │   ├── daily_briefing.py       ← Main entry point (run every weekday evening)
@@ -160,11 +165,12 @@ dhanustambha/
 
 | Layer | Purpose | Status |
 |---|---|---|
-| 1 — Data ingestion | Pull NSE EOD OHLCV into SQLite | ✅ Complete |
-| 2 — Market monitor | Breadth engine → Offensive/Defensive verdict | ✅ Complete |
-| 3 — Setup scanner | Momentum Burst + EP + Trend Intensity scans | ✅ Complete + calibrated |
+| 1 — Data ingestion | Pull NSE EOD OHLCV + Live LTP/OHLCV | ✅ Complete (Tiered) |
+| 2 — Market monitor | Breadth engine → Offensive/Defensive verdict | ✅ Complete (EOD/Live) |
+| 3 — Setup scanner | Momentum Burst + EP + Trend Intensity scans | ✅ Complete (EOD/Live) |
 | 4 — Trade management | Position sizing, open trade log, P&L | ✅ Complete |
-| 5 — Review loop | Trade journal, setup analytics, backtester | ✅ Complete (scaffolding + calibration) |
+| 5 — Review loop | Trade journal, setup analytics, backtester | ✅ Complete |
+| 6 — Live Stream | Async progress scans + real-time LTP polling | ✅ Complete |
 
 ### Data Flow
 
@@ -190,24 +196,30 @@ NSE/BSE Market (3:30 PM close)
 └────────┬────────────┘
          │
          ▼
-┌─────────────────────┐
-│   daily_briefing.py │  Merges, ranks, prints, saves watchlist
-│   (Phase 1 output)  │
-└─────────────────────┘
-         │
-         ▼
+┌─────────────────────┐  ┌─────────────────────┐
+│   daily_briefing.py │  │   Live Scan Worker  │
+│   (Phase 1 output)  │  │   (Async/Progress)  │
+└────────┬────────────┘  └────────┬────────────┘
+         │                        │
+         ▼                        ▼
 ┌─────────────────────┐    ┌─────────────────────┐
 │   Layer 4           │    │   Layer 5           │
 │   Trade Management  │    │   Review Loop       │
 │   sizer, log, P&L   │    │   journal, backtest │
-└─────────────────────┘    └─────────────────────┘
+└────────┬────────────┘    └────────┬────────────┘
          │                           │
          └──────────┬────────────────┘
                     ▼
          ┌─────────────────┐
          │  FastAPI + UI   │
          │  Next.js dash   │
-         └─────────────────┘
+         └────────┬────────┘
+                  │
+                  ▼ [Stream H/I]
+         ┌─────────────────────┐
+         │  Live Price Cache   │  (60s TTL)
+         │  yfinance -> Google  │  (Tiered Fetcher)
+         └─────────────────────┘
 ```
 
 ### Scanner Detection Logic
@@ -467,6 +479,13 @@ No persistent process to manage. No memory leak. If the laptop is off at 16:30, 
 30 16 * * 1-5 cd /home/gaju/dhanustambha && python scripts/daily_briefing.py >> logs/briefing.log 2>&1
 ```
 
+### ADR-009 — Tiered Live Data Fetching
+**Status:** Accepted.
+To ensure "Somewhat Live" availability during market hours without expensive API keys, use a tiered approach:
+1. `yfinance` (Batch) — Primary choice for speed.
+2. `Google Finance Scraper` — Fallback for missing/throttled symbols (Parallelized @ 50 threads).
+3. `SQLite DB` — Last resort (previous EOD close) ensuring the scanner never crashes due to partial API failures.
+
 ---
 
 ## 7. Agent Rules — Behavioral Contract
@@ -596,7 +615,8 @@ Do not silently make a decision that changes architecture or data models. Those 
 | Phase 3 | Review Loop: journal, analytics, calibration backtester | ✅ Complete (calibration active) |
 | Phase 4 | FastAPI + Next.js UI dashboard | ✅ Complete through F4 |
 | Phase 5 / Stream G | Scanner Win-Rate R&D: feature analysis, validation, promotion/demotion gates | ✅ Complete |
-| Phase 6 | Paper Trading & Exit Mechanics Execution | 🔄 In progress |
+| Phase 6 | Live Price Feed & "Somewhat Live" Scanners (Stream H & I) | ✅ Complete |
+| Phase 7 | Paper Trading & Exit Mechanics Execution | 🔄 In progress |
 
 **Phase 1** is complete when `python scripts/daily_briefing.py` runs and produces:
 
@@ -623,7 +643,7 @@ Watchlist saved to: data/watchlists/2026-05-16.csv
 
 ## 9. Current Status & Active Plan
 
-**Last updated:** 2026-05-17
+**Last updated:** 2026-05-20
 **Current phase:** Phase 6 — Paper Trading
 
 **Active plan file:** `docs/superpowers/plans/2026-05-16-interactive-trade-book.md`
@@ -730,49 +750,30 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 ✅ 2026-05-16 — Phase 6 Validation: Proven Microcaps/NIFTY750 drastically decays EP win rate; NIFTY500 confirmed ideal
 ✅ 2026-05-16 — Task 18: Phase 6 Paper Trading Execution (Aggressive Trailing, EP Re-Entry, NIFTY750 Research) 
 ✅ 2026-05-16 — Task 19: Interactive Trade Book Implementation
-   - Added REST APIs for opening, updating stops, and closing trades (CORS-enabled)
-   - Built inline watchlist execution modal with auto-calculated 1% risk position sizing
-   - Created dedicated frontend `/trades` UI (Trade Book) for managing active positions
-   - Merged `feature/interactive-trade-book` into `main`
 ✅ 2026-05-16 — Task 20: Embedded Charts (Sub-Project 2)
-   - Added `GET /ohlcv/{symbol}?days=90` API endpoint with MA20/MA50 rolling calculations
-   - Installed `lightweight-charts` v5 (MIT, zero API key)
-   - Built shared `CandleChart.tsx` component (candlestick + volume histogram + MA lines + entry/stop overlays)
-   - Embedded chart in `CandidateDetailPanel` — loads on symbol select, shows entry/stop dashed lines in execute mode
-   - Embedded chart in Trade Book action panel — appears on Modify Stop / Close with live entry/stop overlays
-   - Merged `feature/embedded-charts` into `main`
 ✅ 2026-05-16 — Task 21: Breadth Dashboard (Sub-Project 3)
-   - Added `GET /market/breadth/history?days=60` API endpoint
-   - Installed `recharts` v2 (MIT, zero API key)
-   - Built `BreadthGauges.tsx` component with radial gauges (Above MA20, Above MA50, Up Vol), High/Low bar, and historical breadth line chart
-   - Integrated into the existing text-only `MarketPanel` on the main dashboard without removing metrics
-   - Merged `feature/breadth-dashboard` into `main`
 ✅ 2026-05-17 — Backtest handoff verification
-   - Verified `tests/test_backtest.py::test_backtest_runs_on_synthetic_data` already passes with a test-local `MB_MAX_PRIOR_RUN` monkeypatch
-   - Ran the full `tests/test_backtest.py` suite: 9 passed
-   - Removed the stale "must fix next" handoff from active next actions
 ✅ 2026-05-17 — Trade ticket live validation fix
-   - Scanner execution now seeds a setup-aware default stop loss before requesting `/trades/quote`
-   - Verified AFFLE on 2026-05-11 populated backend quote fields and enabled `Confirm Trade`
-   - Cancelled the validation ticket; `/trades/open` remained unchanged at 0 open trades
-   - Added Playwright coverage for the scanner quote path
 ✅ 2026-05-17 — Valvo Dashboard Visual Upgrade (Sub-Projects A, B, C, D)
-   - Built PositionCard and PortfolioBar components for Trade Book card grid layout
-   - Added new `/stock/[symbol]` detail route with standalone stock view
-   - Redesigned BreadthGauges with regime badges, dense A/D bars, and sparklines
-   - Rewrote TradeClient and resolved Playwright test suite failures, verifying fully integrated frontend
 ✅ 2026-05-17 — Dedicated Market Monitor page
-   - Added `/market` as a full-width market breadth view with regime summary, timeframe controls, advance/decline panels, MA breadth trend charts, and corrected green/red net A/D bars
-   - Added sidebar navigation and a dashboard "Full monitor" link so the compact dashboard card is no longer the only breadth surface
-   - Verified the frontend production build and a browser smoke against `http://127.0.0.1:3000/market`
 ✅ 2026-05-20 — Bug fix: EP scanner tab showed 0 candidates
    - Root cause: `scanner-client.tsx` filter tab used the alias `'EP'` as the filter value; DB stores `setup_type = 'EPISODIC_PIVOT'`
    - Fix: segmented control now uses `'EPISODIC_PIVOT'` as value with `'EP'` as display label
    - Added `test_ep_watchlist_setup_type_is_episodic_pivot_not_ep` to `tests/test_api.py` to lock in the contract
 ✅ 2026-05-20 — Bug fix: trade modal shares field was read-only
-   - Root cause: the execute form displayed computed shares as a `<Metric>` display-only component; user had no way to override the server-computed quantity
-   - Fix: replaced `<Metric>` with an editable `<input type="number">` seeded from `quote.shares`; user override is wired into the `/trades/open` payload
-   - `Confirm Trade` button remains disabled until a valid quote exists and shares > 0
+    - Root cause: the execute form displayed computed shares as a `<Metric>` display-only component; user had no way to override the server-computed quantity
+    - Fix: replaced `<Metric>` with an editable `<input type="number">` seeded from `quote.shares`; user override is wired into the `/trades/open` payload
+    - `Confirm Trade` button remains disabled until a valid quote exists and shares > 0
+✅ 2026-05-20 — Stream H: Live Price Feed (LTP)
+    - Implemented `LivePriceCache` with 60s TTL and Tiered Fetcher (yfinance -> Google).
+    - Integrated real-time LTP polling in Scanners Table and Trade Book P&L.
+✅ 2026-05-20 — Stream I: Somewhat Live Market Scanner
+    - Built async briefing pipeline (`/briefing/live/start`) with background worker and job/progress tracking.
+    - Optimized DB queries to use 60-day lookback instead of full history (drastic speedup).
+    - Created reusable `LiveScanController` with progress bar UI.
+    - Integrated "Live Briefing" button directly into the main Dashboard.
+✅ 2026-05-20 — Bug fix: yfinance throttling caused noisy JSON decode errors logs; suppressed yfinance internal logger.
+✅ 2026-05-20 — UX: Added Execute button directly to watchlist table rows in `scanner-client.tsx`.
 ```
 
 ---
@@ -796,6 +797,10 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 - ~~EP scanner tab showed 0 candidates on 2026-05-20~~ **RESOLVED 2026-05-20** — filter value corrected from `'EP'` alias to `'EPISODIC_PIVOT'` in `scanner-client.tsx`.
 
 - ~~Trade modal shares field was read-only~~ **RESOLVED 2026-05-20** — editable `<input>` field with server-computed default added to `CandidateDetailPanel`.
+
+- ~~yfinance throttling caused noisy JSON errors in terminal~~ **RESOLVED 2026-05-20** — set yfinance logger to CRITICAL to suppress non-fatal parsing errors.
+
+- ~~Execute ⚡ button only available in detail panel~~ **RESOLVED 2026-05-20** — added Execute button directly in watchlist table rows and wired `isExecuting` state.
 
 - Phase 6 risk config needs an explicit decision before real paper-trade entry: current `config.py` uses `TRADE_RISK_PCT = 0.025` and `TRADE_MAX_POSITION_PCT = 0.25`, while the handoff language expected 1% risk and a max-position cap. The UI correctly reflects backend config, but the intended risk policy must be confirmed.
 
