@@ -618,8 +618,8 @@ def _run_live_scan_worker(job_id: str):
         job["status"] = "processing_breadth"
         job["progress"] = 85
         
-        # Fetch full history for today to calculate MAs (60 days lookback is sufficient)
-        full_df = get_all_symbols_ohlcv(today, lookback_days=config.BRIEFING_HISTORY_DAYS)
+        # Fetch full history for today to calculate MAs and 52w highs (260 business days = 52 weeks)
+        full_df = get_all_symbols_ohlcv(today, lookback_days=260)
         breadth_record = compute_breadth(full_df)
         if breadth_record:
             breadth_record["verdict"] = compute_verdict(breadth_record)

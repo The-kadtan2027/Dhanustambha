@@ -95,7 +95,7 @@ def test_run_briefing_prints_combined_and_setup_sections(monkeypatch, capsys):
     monkeypatch.setattr(
         daily_briefing,
         "get_all_symbols_ohlcv",
-        lambda fetch_date: pd.DataFrame(
+        lambda fetch_date, lookback_days=60: pd.DataFrame(
             [{"symbol": "RELIANCE", "date": "2026-04-28", "open": 100.0, "high": 110.0, "low": 99.0, "close": 108.0, "volume": 1000}]
         ),
     )

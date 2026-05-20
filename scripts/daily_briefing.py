@@ -104,9 +104,9 @@ def _print_setup_table(title: str, candidates: pd.DataFrame) -> None:
 
     print(
         f"  {'':3s}{'SYMBOL':<12} {'MATCHED_SETUPS':<28} "
-        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8} {'STOP_LOSS':^14}"
+        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8} {'STOP_LOSS':^14} {'SCORE':^7}"
     )
-    print(f"  {'-' * 88}")
+    print(f"  {'-' * 97}")
     for _, row in candidates.iterrows():
         matched_setups = row.get("matched_setups", row.get("setup_type", ""))
         tier_label = ""
@@ -127,7 +127,8 @@ def _print_setup_table(title: str, candidates: pd.DataFrame) -> None:
         print(
             f"  {tier_label:3s}{row['symbol']:<12} {matched_setups:<28} "
             f"{row['pct_change']:>+6.1f}% {row['volume_ratio']:>9.1f}x "
-            f"{row['close']:>8.2f} {stop_val:>8.2f} ({stop_pct:3.1f}%)"
+            f"{row['close']:>8.2f} {stop_val:>8.2f} ({stop_pct:3.1f}%) "
+            f"{row.get('score', 0):>7.2f}"
         )
 
 
@@ -194,7 +195,7 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
 
 
     print("\n[2/4] Computing Market Monitor breadth...")
-    all_data = get_all_symbols_ohlcv(fetch_date)
+    all_data = get_all_symbols_ohlcv(fetch_date, lookback_days=260)
     metrics = compute_breadth(all_data)
     verdict = compute_verdict(metrics)
     if metrics:
@@ -252,9 +253,9 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
     print(f"  {'-' * 45}")
     print(
         f"  {'':3s}{'SYMBOL':<12} {'SETUP':<14} {'MATCHED_SETUPS':<22} "
-        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8} {'STOP_LOSS':^14}"
+        f"{'%CHG':>6} {'VOL_RATIO':>10} {'PRICE':>8} {'STOP_LOSS':^14} {'SCORE':^7}"
     )
-    print(f"  {'-' * 105}")
+    print(f"  {'-' * 114}")
     for _, row in watchlist.iterrows():
         matched_setups = row.get("matched_setups", row["setup_type"])
         # Show quality/tier marker for high-conviction candidates
@@ -279,7 +280,8 @@ def run_briefing(fetch_date: Optional[str] = None, history_days: Optional[int] =
             f"  {tier_label:3s}{row['symbol']:<12} {row['setup_type']:<14} "
             f"{matched_setups:<22} "
             f"{row['pct_change']:>+6.1f}% {row['volume_ratio']:>9.1f}x "
-            f"{row['close']:>8.2f} {stop_val:>8.2f} ({stop_pct:3.1f}%)"
+            f"{row['close']:>8.2f} {stop_val:>8.2f} ({stop_pct:3.1f}%) "
+            f"{row.get('score', 0):>7.2f}"
         )
 
     _print_setup_table("TOP MOMENTUM BURST", mb_results)

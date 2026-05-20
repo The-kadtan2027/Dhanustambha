@@ -806,9 +806,11 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 
 - ~~Live scanner briefing takes several minutes due to heavy rate throttling~~ **RESOLVED 2026-05-20** — changed `yfinance` download interval from `1m` to `1d` to fetch single daily candles without throttling.
 
-- ~~Live scanner appends duplicated watchlist records when run multiple times~~ **RESOLVED 2026-05-20** — modified `save_watchlist` to delete the given date's entries before inserting new ones.
-
 - ~~Live scanner fails with KeyError when fetch_live_prices drops symbols~~ **RESOLVED 2026-05-20** — updated `LivePriceCache` dictionary comprehension to safely check if symbol is in fetched data; fixed frontend by URI-encoding the symbols list parameter.
+
+- ~~Daily briefing CLI output missing SCORE column~~ **RESOLVED 2026-05-20** — added `SCORE` column rendering to `_print_setup_table` and `run_briefing` CLI tables.
+
+- ~~Breadth calculator returns 0 for MA50 & 52-week Highs/Lows~~ **RESOLVED 2026-05-20** — moved pandas `.rolling()` window evaluations to execute *before* truncating burn-in rows; updated `daily_briefing.py` & `main.py` to correctly supply 260-business-day lookback instead of 60 days.
 
 - Phase 6 risk config needs an explicit decision before real paper-trade entry: current `config.py` uses `TRADE_RISK_PCT = 0.025` and `TRADE_MAX_POSITION_PCT = 0.25`, while the handoff language expected 1% risk and a max-position cap. The UI correctly reflects backend config, but the intended risk policy must be confirmed.
 

@@ -30,23 +30,6 @@ def compute_historical_breadth(df: pd.DataFrame) -> pd.DataFrame:
     working["date"] = pd.to_datetime(working["date"])
     working = working.sort_values(["symbol", "date"]).reset_index(drop=True)
     working["row_number"] = working.groupby("symbol").cumcount() + 1
-    working = working[working["row_number"] >= 21].copy()
-    if working.empty:
-        logger.warning(
-            "No eligible history in compute_historical_breadth due to insufficient lookback"
-        )
-        return pd.DataFrame(
-            columns=[
-                "date",
-                "pct_above_ma20",
-                "pct_above_ma50",
-                "new_highs_52w",
-                "new_lows_52w",
-                "up_volume_ratio",
-                "advancing",
-                "declining",
-            ]
-        )
 
     close_by_symbol = working.groupby("symbol")["close"]
     high_by_symbol = working.groupby("symbol")["high"]
@@ -60,6 +43,14 @@ def compute_historical_breadth(df: pd.DataFrame) -> pd.DataFrame:
         lambda values: values.rolling(252, min_periods=1).min()
     )
     working["prev_close"] = close_by_symbol.shift(1).fillna(working["close"])
+    
+    # After generating rolling values safely with full history, drop the early
+    # burn-in periods if requested (we filter to rows >= 21 to have a valid ma20).
+    working = working[working["row_number"] >= 21].copy()
+    if working.empty:
+        logger.warning("No eligible history remains after burn-in drop.")
+        return pd.DataFrame(columns=["date", "pct_above_ma20", "pct_above_ma50", "new_highs_52w", "new_lows_52w", "up_volume_ratio", "advancing", "declining"])
+            
     working["above_ma20"] = (
         (~working["ma20"].isna()) & (working["close"] > working["ma20"])
     ).astype(int)
