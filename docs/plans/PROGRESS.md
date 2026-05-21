@@ -2,7 +2,7 @@
 
 > Agents: update this file after every completed task. This is the project memory.
 
-**Last updated:** 2026-05-17
+**Last updated:** 2026-05-21
 **Current phase:** Phase 6 - Paper Trading
 **Active plan:** `docs/superpowers/plans/2026-05-16-interactive-trade-book.md`
 
@@ -91,6 +91,7 @@
 - 2026-05-20 - Stream H: Live Price Feed (LTP) implemented with `LivePriceCache` and Tiered Fetcher.
 - 2026-05-20 - Stream I: "Somewhat Live" Market Scanner implemented with async briefing pipeline and Dashboard integration.
 - 2026-05-20 - Performance: Optimized DB queries (60-day lookback) and increased fetcher concurrency (50 threads).
+- 2026-05-21 - Trade Book live-price refresh fix: `/trades/open`, `/trades/actions`, and `/trades/portfolio` now default to live quotes so a page reload or in-app refresh no longer regresses to stale DB closes; regression coverage added in `tests/test_api.py`.
 
 ## In Progress
 
@@ -125,6 +126,7 @@
 - The current environment has no default `python`/`py` command on `PATH`; use `C:\Program Files\Python312\python.exe` for manual local runs from PowerShell unless the shell environment is updated.
 - Final exported watchlists record one winning `setup_type` per symbol by design; use the `matched_setups` column in CSV/briefing output when validating whether EP or another scanner also triggered on the same symbol.
 - Phase 6 risk config needs an explicit decision before real paper-trade entry: current `config.py` uses `TRADE_RISK_PCT = 0.025` and `TRADE_MAX_POSITION_PCT = 0.25`, while the handoff language expected 1% risk and a max-position cap. The UI correctly reflects backend config, but the intended risk policy must be confirmed.
+- [x] Trade Book stale-price regression on page refresh resolved on 2026-05-21: trade status endpoints now default to live quotes instead of falling back to stored closes on initial reload.
 
 ## Deviations from Plan
 

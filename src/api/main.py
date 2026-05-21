@@ -155,6 +155,65 @@ def _records_from_dataframe(df: pd.DataFrame) -> List[Dict[str, Any]]:
     ]
 
 
+def _float_or_none(value: Any) -> Optional[float]:
+    """Return a finite float for numeric values, otherwise None."""
+    if value is None or pd.isna(value):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(numeric) or math.isinf(numeric):
+        return None
+    return numeric
+
+
+def _build_live_ohlcv_row(
+    symbol: str,
+    row_date: str,
+    live_data: Dict[str, Any],
+    existing_today: Optional[Dict[str, Any]] = None,
+    previous_row: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Build a same-day OHLCV row without collapsing an existing candle range."""
+    price = _float_or_none(live_data.get("price"))
+    if price is None:
+        return None
+
+    existing_today = existing_today or {}
+    previous_row = previous_row or {}
+    prior_close = _float_or_none(previous_row.get("close"))
+    open_price = _float_or_none(live_data.get("open"))
+    high_price = _float_or_none(live_data.get("high"))
+    low_price = _float_or_none(live_data.get("low"))
+
+    if open_price is None:
+        open_price = _float_or_none(existing_today.get("open")) or prior_close or price
+    if high_price is None:
+        high_price = _float_or_none(existing_today.get("high")) or open_price
+    if low_price is None:
+        low_price = _float_or_none(existing_today.get("low")) or open_price
+
+    # Live LTP snapshots may not include the full day range. Preserve any stored
+    # same-day range and expand it only when the latest price breaks that range.
+    high_price = max(high_price, open_price, price)
+    low_price = min(low_price, open_price, price)
+
+    live_volume = live_data.get("volume")
+    existing_volume = existing_today.get("volume")
+    volume = live_volume if live_volume is not None else existing_volume
+
+    return {
+        "symbol": symbol,
+        "date": row_date,
+        "open": open_price,
+        "high": high_price,
+        "low": low_price,
+        "close": price,
+        "volume": int(volume or 0),
+    }
+
+
 def _build_trade_quote(req: TradeQuoteRequest) -> Dict[str, Any]:
     """Calculate a server-side trade quote or raise a validation error."""
     if req.account_size <= 0:
@@ -409,8 +468,8 @@ def ohlcv_chart(symbol: str, days: int = 90) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"No data for symbol {symbol}")
 
     df = df.sort_values("date").reset_index(drop=True)
-    df["ma20"] = df["close"].rolling(20, min_periods=1).mean()
-    df["ma50"] = df["close"].rolling(50, min_periods=1).mean()
+    df["ma20"] = df["close"].rolling(20, min_periods=20).mean()
+    df["ma50"] = df["close"].rolling(50, min_periods=50).mean()
 
     candles: List[Dict[str, Any]] = []
     for _, row in df.iterrows():
@@ -431,7 +490,7 @@ def ohlcv_chart(symbol: str, days: int = 90) -> Dict[str, Any]:
 
 
 @app.get("/trades/open")
-def open_trades(live: bool = False) -> Dict[str, Any]:
+def open_trades(live: bool = True) -> Dict[str, Any]:
     """Return open trades with current P&L and action flags.
     
     If live=True, fetches current prices to show real-time P&L.
@@ -452,7 +511,7 @@ def open_trades(live: bool = False) -> Dict[str, Any]:
 
 
 @app.get("/trades/actions")
-def trade_actions(live: bool = False) -> Dict[str, Any]:
+def trade_actions(live: bool = True) -> Dict[str, Any]:
     """Return open trades that require management action."""
     current_prices = None
     if live:
@@ -487,7 +546,7 @@ def trades_by_symbol(symbol: str) -> Dict[str, Any]:
 
 
 @app.get("/trades/portfolio")
-def trade_portfolio(live: bool = False) -> Dict[str, Any]:
+def trade_portfolio(live: bool = True) -> Dict[str, Any]:
     """Return portfolio-level aggregates across all open trades."""
     current_prices = None
     if live:
@@ -598,18 +657,35 @@ def _run_live_scan_worker(job_id: str):
         ohlcv_map = fetch_live_ohlcv(symbols, progress_callback=progress_cb)
         
         # 3. Upsert into DB for today
+        existing_today: Dict[str, Dict[str, Any]] = {}
+        previous_rows: Dict[str, Dict[str, Any]] = {}
+        existing_df = get_all_symbols_ohlcv(today, lookback_days=1)
+        if not existing_df.empty:
+            today_mask = existing_df["date"].dt.strftime("%Y-%m-%d") == today
+            existing_today = {
+                str(row["symbol"]): row.to_dict()
+                for _, row in existing_df.loc[today_mask].iterrows()
+            }
+            previous_rows = {
+                str(row["symbol"]): row.to_dict()
+                for _, row in existing_df.loc[~today_mask]
+                .sort_values(["symbol", "date"])
+                .groupby("symbol")
+                .tail(1)
+                .iterrows()
+            }
+
         rows = []
         for s, d in ohlcv_map.items():
-            if d.get("price") is not None:
-                rows.append({
-                    "symbol": s,
-                    "date": today,
-                    "open": d.get("open") if d.get("open") is not None else d["price"],
-                    "high": d.get("high") if d.get("high") is not None else d["price"],
-                    "low": d.get("low") if d.get("low") is not None else d["price"],
-                    "close": d["price"],
-                    "volume": d.get("volume") or 0
-                })
+            row = _build_live_ohlcv_row(
+                s,
+                today,
+                d,
+                existing_today=existing_today.get(s),
+                previous_row=previous_rows.get(s),
+            )
+            if row is not None:
+                rows.append(row)
         
         if rows:
             upsert_ohlcv(rows)

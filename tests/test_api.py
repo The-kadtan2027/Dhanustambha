@@ -222,6 +222,112 @@ def test_trade_actions_filters_none_actions(api_client):
     assert payload["items"][0]["action_required"] == "TRAIL_TO_BREAKEVEN"
 
 
+def test_trade_actions_includes_stop_loss_hit(api_client):
+    """Trade actions endpoint should surface positions whose stop has been hit."""
+    from src.ingestion.store import upsert_ohlcv
+    from src.trade.log import open_trade
+
+    upsert_ohlcv(
+        [
+            {
+                "symbol": "ERIS",
+                "date": "2026-05-20",
+                "open": 1460.0,
+                "high": 1470.0,
+                "low": 1450.0,
+                "close": 1460.3,
+                "volume": 500000,
+            },
+            {
+                "symbol": "ERIS",
+                "date": "2026-05-21",
+                "open": 1435.0,
+                "high": 1440.0,
+                "low": 1387.0,
+                "close": 1391.1,
+                "volume": 700000,
+            },
+        ]
+    )
+    open_trade(
+        symbol="ERIS",
+        setup_type="EPISODIC_PIVOT",
+        entry_date="2026-05-20",
+        entry_price=1460.3,
+        shares=22,
+        stop_price=1429.65,
+    )
+
+    response = api_client.get("/trades/actions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["items"][0]["symbol"] == "ERIS"
+    assert payload["items"][0]["action_required"] == "STOP_LOSS_HIT"
+
+
+def test_open_trades_defaults_to_live_prices(api_client, monkeypatch):
+    """Trade Book bootstrap should prefer live prices over stale stored closes."""
+    from src.api.main import _price_cache
+    from src.ingestion.store import upsert_ohlcv
+    from src.trade.log import open_trade
+
+    upsert_ohlcv(
+        [
+            {
+                "symbol": "GLAND",
+                "date": "2026-05-20",
+                "open": 2251.1,
+                "high": 2260.0,
+                "low": 2230.0,
+                "close": 2251.1,
+                "volume": 500000,
+            },
+            {
+                "symbol": "GLAND",
+                "date": "2026-05-21",
+                "open": 2275.0,
+                "high": 2310.0,
+                "low": 2268.0,
+                "close": 2302.2,
+                "volume": 600000,
+            },
+        ]
+    )
+    open_trade(
+        symbol="GLAND",
+        setup_type="EPISODIC_PIVOT",
+        entry_date="2026-05-20",
+        entry_price=2251.1,
+        shares=15,
+        stop_price=2161.05,
+    )
+
+    def fake_get_prices(symbols):
+        assert symbols == ["GLAND"]
+        return {
+            "GLAND": {
+                "price": 2338.0,
+                "open": 2275.0,
+                "high": 2340.0,
+                "low": 2268.0,
+                "volume": 627280,
+                "is_cached": False,
+            }
+        }
+
+    monkeypatch.setattr(_price_cache, "get_prices", fake_get_prices)
+
+    response = api_client.get("/trades/open")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["items"][0]["symbol"] == "GLAND"
+    assert payload["items"][0]["current_close"] == 2338.0
+
+
 def test_api_allows_post_methods(api_client):
     """API should allow POST methods for frontend trade execution."""
     response = api_client.options(
@@ -427,6 +533,82 @@ def test_ohlcv_endpoint_returns_candles_and_ma(api_client):
     first = payload["candles"][0]
     for key in ("time", "open", "high", "low", "close", "volume", "ma20", "ma50"):
         assert key in first, f"Missing key: {key}"
+
+
+def test_live_ohlcv_row_preserves_existing_intraday_range(api_client):
+    """Live LTP updates should not collapse an existing same-day candle range."""
+    from src.api.main import _build_live_ohlcv_row
+
+    row = _build_live_ohlcv_row(
+        symbol="DEMO",
+        row_date="2026-05-21",
+        live_data={"price": 106.0, "volume": 700_000},
+        existing_today={
+            "open": 100.0,
+            "high": 110.0,
+            "low": 95.0,
+            "close": 104.0,
+            "volume": 600_000,
+        },
+    )
+
+    assert row == {
+        "symbol": "DEMO",
+        "date": "2026-05-21",
+        "open": 100.0,
+        "high": 110.0,
+        "low": 95.0,
+        "close": 106.0,
+        "volume": 700_000,
+    }
+
+
+def test_live_ohlcv_row_expands_existing_intraday_range(api_client):
+    """Live LTP updates should expand the candle when price breaks the stored range."""
+    from src.api.main import _build_live_ohlcv_row
+
+    row = _build_live_ohlcv_row(
+        symbol="DEMO",
+        row_date="2026-05-21",
+        live_data={"price": 112.0, "volume": None},
+        existing_today={
+            "open": 100.0,
+            "high": 110.0,
+            "low": 95.0,
+            "close": 104.0,
+            "volume": 600_000,
+        },
+    )
+
+    assert row["open"] == 100.0
+    assert row["high"] == 112.0
+    assert row["low"] == 95.0
+    assert row["close"] == 112.0
+    assert row["volume"] == 600_000
+
+
+def test_live_ohlcv_row_uses_prior_close_for_price_only_snapshot(api_client):
+    """Price-only live snapshots should show movement from the prior close."""
+    from src.api.main import _build_live_ohlcv_row
+
+    row = _build_live_ohlcv_row(
+        symbol="DEMO",
+        row_date="2026-05-21",
+        live_data={"price": 106.0},
+        previous_row={
+            "open": 98.0,
+            "high": 103.0,
+            "low": 97.0,
+            "close": 100.0,
+            "volume": 600_000,
+        },
+    )
+
+    assert row["open"] == 100.0
+    assert row["high"] == 106.0
+    assert row["low"] == 100.0
+    assert row["close"] == 106.0
+    assert row["volume"] == 0
 
 def test_breadth_history_endpoint_returns_rows(api_client):
     """GET /market/breadth/history should return a list of breadth rows."""
