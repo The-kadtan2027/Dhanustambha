@@ -114,3 +114,33 @@ def test_export_watchlist_saves_csv_and_filters_db_columns(monkeypatch, tmp_path
             "notes": "MB hit",
         }
     ]
+
+
+def test_export_empty_watchlist_clears_existing_rows(monkeypatch, tmp_path):
+    """A same-date empty export should remove stale DB candidates."""
+    from src.ingestion.store import get_watchlist, init_db
+
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "watchlist.db"))
+    monkeypatch.setattr(config, "WATCHLIST_DIR", str(tmp_path))
+    init_db()
+
+    non_empty = pd.DataFrame(
+        [
+            {
+                "date": "2026-05-21",
+                "symbol": "RAILTEL",
+                "setup_type": "MOMENTUM_BURST",
+                "score": 10.0,
+                "pct_change": 6.0,
+                "volume_ratio": 2.0,
+                "close": 100.0,
+                "notes": "initial",
+            }
+        ]
+    )
+    watchlist.export_watchlist(non_empty, scan_date="2026-05-21")
+    assert len(get_watchlist("2026-05-21")) == 1
+
+    watchlist.export_watchlist(pd.DataFrame(), scan_date="2026-05-21")
+
+    assert get_watchlist("2026-05-21").empty

@@ -184,6 +184,38 @@ def test_get_stored_dates_returns_sorted_distinct_dates(tmp_db):
     assert get_stored_dates() == ["2026-04-09", "2026-04-10"]
 
 
+def test_get_breadth_history_closes_connection(tmp_db, monkeypatch):
+    """Breadth history queries should close their SQLite connection."""
+    from src.ingestion import store
+
+    class FakeCursor:
+        description = [("date",), ("verdict",)]
+
+        def execute(self, query, params):
+            return None
+
+        def fetchall(self):
+            return [("2026-05-21", "OFFENSIVE")]
+
+    class FakeConnection:
+        def __init__(self):
+            self.closed = False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def close(self):
+            self.closed = True
+
+    fake_conn = FakeConnection()
+    monkeypatch.setattr(store, "get_connection", lambda: fake_conn)
+
+    rows = store.get_breadth_history(days=1)
+
+    assert rows == [{"date": "2026-05-21", "verdict": "OFFENSIVE"}]
+    assert fake_conn.closed is True
+
+
 def test_trade_reviews(tmp_db):
     """Test saving trade reviews and fetching closed trades with reviews."""
     from src.ingestion.store import init_db, save_trade_review, get_closed_trades, save_trade, update_trade

@@ -85,6 +85,15 @@ def open_trade(
     if shares <= 0:
         raise ValueError("Shares must be positive.")
 
+    if entry_price <= 0:
+        raise ValueError("Entry price must be positive.")
+
+    if stop_price <= 0:
+        raise ValueError("Stop price must be positive.")
+
+    if stop_price >= entry_price:
+        raise ValueError("Stop price must be below entry price.")
+
     record = {
         "symbol": symbol.strip().upper(),
         "setup_type": setup_type.strip().upper(),

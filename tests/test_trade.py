@@ -115,6 +115,24 @@ def test_trade_log_open_close_and_summary(tmp_db):
     assert summary["expectancy_r"] == 3.0
 
 
+def test_open_trade_rejects_stop_at_or_above_entry(tmp_db):
+    """Shared trade creation should reject invalid risk geometry."""
+    from src.ingestion.store import init_db
+    from src.trade.log import open_trade
+
+    init_db()
+
+    with pytest.raises(ValueError, match="Stop price must be below entry price"):
+        open_trade(
+            symbol="FOO",
+            setup_type="MOMENTUM_BURST",
+            entry_date="2026-05-21",
+            entry_price=100.0,
+            shares=10,
+            stop_price=100.0,
+        )
+
+
 def test_build_open_trade_status_uses_latest_close(tmp_db):
     """Open trade status should include current close, unrealized P&L, and action fields."""
     from src.ingestion.store import init_db, upsert_ohlcv

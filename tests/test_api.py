@@ -2,6 +2,7 @@
 
 import os
 import sys
+import subprocess
 
 import pytest
 
@@ -479,6 +480,44 @@ def test_api_open_trade_rejects_invalid_quote(api_client):
 
     assert response.status_code == 422
     assert "Stop price must be below entry price" in response.json()["detail"]
+
+
+def test_api_open_trade_rejects_manual_invalid_stop(api_client):
+    """Manual-share trade creation should reject invalid stop geometry."""
+    response = api_client.post(
+        "/trades/open",
+        json={
+            "symbol": "FOO",
+            "setup_type": "MOMENTUM_BURST",
+            "entry_date": "2026-05-16",
+            "entry_price": 100.0,
+            "stop_price": 100.0,
+            "shares": 10,
+            "grade": "B",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Stop price must be below entry price" in response.json()["detail"]
+
+
+def test_api_run_briefing_uses_current_python_interpreter(api_client, monkeypatch):
+    """Manual briefing endpoint should not rely on a python executable on PATH."""
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("src.api.main.subprocess.run", fake_run)
+
+    response = api_client.post("/briefing/run")
+
+    assert response.status_code == 200, response.text
+    command, kwargs = calls[0]
+    assert command[:2] == [sys.executable, "scripts/daily_briefing.py"]
+    assert kwargs["timeout"] == 300
+
 
 def test_api_update_and_close_trade(api_client):
     """API should allow updating the stop price and closing the trade."""

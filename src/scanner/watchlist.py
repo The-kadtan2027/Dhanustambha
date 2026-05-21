@@ -8,7 +8,7 @@ from typing import List, Optional
 import pandas as pd
 
 import config
-from src.ingestion.store import save_watchlist
+from src.ingestion.store import clear_watchlist, save_watchlist
 
 
 logger = logging.getLogger(__name__)
@@ -79,5 +79,8 @@ def export_watchlist(df: pd.DataFrame, scan_date: Optional[str] = None) -> str:
     logger.info("Watchlist saved to %s", csv_path)
 
     db_df = df[[column for column in WATCHLIST_DB_COLUMNS if column in df.columns]].copy()
-    save_watchlist(db_df.to_dict(orient="records"))
+    if db_df.empty:
+        clear_watchlist(scan_date)
+    else:
+        save_watchlist(db_df.to_dict(orient="records"))
     return csv_path

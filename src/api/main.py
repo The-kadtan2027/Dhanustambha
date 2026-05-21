@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from contextlib import asynccontextmanager
 import math
+import sys
 from typing import Any, AsyncIterator, Dict, List, Optional
 import subprocess
 
@@ -440,6 +441,8 @@ def api_open_trade(req: TradeOpenRequest) -> Dict[str, Any]:
         return row
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -606,7 +609,7 @@ def api_run_briefing() -> Dict[str, Any]:
     """Manually trigger the daily briefing script."""
     try:
         result = subprocess.run(
-            ["python", "scripts/daily_briefing.py"],
+            [sys.executable, "scripts/daily_briefing.py"],
             capture_output=True,
             text=True,
             timeout=300

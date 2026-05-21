@@ -344,6 +344,8 @@ def get_breadth_history(days: int = 60) -> list[dict]:
     except sqlite3.OperationalError as exc:
         logger.error("breadth_history query failed: %s", exc)
         return []
+    finally:
+        conn.close()
 
 
 def get_breadth_dates() -> List[str]:
@@ -454,6 +456,20 @@ def save_watchlist(entries: List[Dict]) -> None:
         logger.info("Saved %d watchlist entries for %s", len(entries), date_val)
     except sqlite3.OperationalError as exc:
         logger.error("Failed to save watchlist: %s", exc)
+        raise
+    finally:
+        conn.close()
+
+
+def clear_watchlist(date_val: str) -> None:
+    """Delete all watchlist rows for one scan date."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM watchlist WHERE date = ?", (date_val,))
+        conn.commit()
+        logger.info("Cleared watchlist entries for %s", date_val)
+    except sqlite3.OperationalError as exc:
+        logger.error("Failed to clear watchlist for %s: %s", date_val, exc)
         raise
     finally:
         conn.close()

@@ -41,7 +41,7 @@ test('scanner execute ticket requests a backend quote', async ({ page }) => {
   await expect(page.getByText('5 candidates found')).toBeVisible({ timeout: 10000 });
 
   await page.getByRole('link', { name: 'AFFLE' }).click();
-  await page.getByRole('button', { name: 'Execute ⚡' }).click();
+  await page.getByRole('button', { name: 'Execute' }).click();
 
   await expect(page.getByText('OFFENSIVE')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('Computed Shares').locator('..')).not.toContainText('-');
