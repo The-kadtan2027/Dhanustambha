@@ -329,6 +329,51 @@ def test_open_trades_defaults_to_live_prices(api_client, monkeypatch):
     assert payload["items"][0]["current_close"] == 2338.0
 
 
+def test_open_trades_persists_live_price_to_ohlcv(api_client, monkeypatch):
+    """GET /trades/open should write today's live price as an OHLCV candle to the DB.
+
+    After the poll fires, /ohlcv/{symbol} must return a candle for today so the
+    chart component can show a live bar without needing a full /briefing/live scan.
+    """
+    import datetime
+    from src.api.main import _price_cache
+    from src.ingestion.store import upsert_ohlcv
+    from src.trade.log import open_trade
+
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    today = datetime.date.today().isoformat()
+
+    upsert_ohlcv([{
+        "symbol": "LTIM",
+        "date": yesterday,
+        "open": 5000.0, "high": 5050.0, "low": 4980.0, "close": 5020.0,
+        "volume": 300000,
+    }])
+    open_trade(
+        symbol="LTIM", setup_type="MOMENTUM_BURST",
+        entry_date=yesterday, entry_price=5020.0,
+        shares=5, stop_price=4895.0,
+    )
+
+    def fake_get_prices(symbols):
+        return {"LTIM": {"price": 5180.0, "open": 5025.0, "high": 5185.0,
+                         "low": 5010.0, "volume": 450000, "is_cached": False}}
+
+    monkeypatch.setattr(_price_cache, "get_prices", fake_get_prices)
+
+    # Fire the live poll — this should now persist today's candle
+    response = api_client.get("/trades/open")
+    assert response.status_code == 200
+
+    # Today's candle must now exist in the DB via the ohlcv endpoint
+    ohlcv_resp = api_client.get(f"/ohlcv/LTIM?days=90")
+    assert ohlcv_resp.status_code == 200
+    candles = ohlcv_resp.json()["candles"]
+    today_candles = [c for c in candles if c["time"] == today]
+    assert len(today_candles) == 1, f"Expected today's candle in DB; got times: {[c['time'] for c in candles]}"
+    assert today_candles[0]["close"] == 5180.0
+
+
 def test_api_allows_post_methods(api_client):
     """API should allow POST methods for frontend trade execution."""
     response = api_client.options(

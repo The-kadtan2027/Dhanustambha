@@ -118,3 +118,11 @@ DATA_PULL_GRACE_MINUTES = 30
 LIVE_PRICE_REFRESH_SECONDS = 60  # Default 1 minute for dashboard polling
 LIVE_PRICE_CACHE_TTL = 300      # 5 minute hard expiration for backend safety
 
+# ---------------------------------------------------------------------------
+# Live Scan Scheduler (Stream I)
+# ---------------------------------------------------------------------------
+LIVE_SCAN_SCHEDULE_ENABLED = True
+LIVE_SCAN_START_TIME = "14:00"
+LIVE_SCAN_END_TIME = "15:30"
+LIVE_SCAN_INTERVAL_MINUTES = 30
+

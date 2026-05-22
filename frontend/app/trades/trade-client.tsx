@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { AlertTriangle, RefreshCw, CheckCircle2, LayoutGrid, List } from "lucide-react";
 import type { Trade, TradeList, PortfolioSummary } from "../../types/api";
-import { formatCurrency } from "../../lib/format";
+import { formatCurrency, labelFromToken } from "../../lib/format";
 import PositionCard from "../components/PositionCard";
 import PortfolioBar from "../components/PortfolioBar";
 import CandleChart, { type Candle } from "../components/CandleChart";
@@ -188,7 +188,7 @@ export default function TradeClient({ apiBaseUrl, initialOpenTrades, initialPort
                 {trades.map((t) => (
                   <tr key={t.id} className={activeTrade?.id === t.id ? "selectedRow" : ""}>
                     <td><strong>{t.symbol}</strong></td>
-                    <td>{t.setup_type.replaceAll("_", " ")}</td>
+                    <td>{labelFromToken(t.setup_type)}</td>
                     <td className="num">{formatCurrency(t.entry_price)}</td>
                     <td className="num">{formatCurrency(t.stop_price)}</td>
                     <td className="num">{formatCurrency(t.current_close)}</td>
@@ -199,7 +199,7 @@ export default function TradeClient({ apiBaseUrl, initialOpenTrades, initialPort
                       {t.pct_gain?.toFixed(2) ?? "-"}%
                     </td>
                     <td><span style={{ color: t.action_required !== "NONE" ? "var(--amber)" : "inherit" }}>
-                      {t.action_required.replaceAll("_", " ")}
+                      {labelFromToken(t.action_required)}
                     </span></td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>

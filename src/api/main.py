@@ -77,13 +77,55 @@ class LivePriceCache:
         return {s: {**self.data[s], "is_cached": False} for s in symbols if s in self.data}
 
 _price_cache = LivePriceCache()
+import asyncio
 
+async def _scheduled_scan_loop():
+    """Background task to run live scans periodically during market hours."""
+    from zoneinfo import ZoneInfo
+    IST = ZoneInfo("Asia/Kolkata")
+    last_run_time = None
+
+    while True:
+        try:
+            if getattr(config, "LIVE_SCAN_SCHEDULE_ENABLED", False):
+                now = datetime.now(IST)
+                
+                # Only run on market days (Monday - Friday)
+                if now.weekday() < 5:
+                    start_hour, start_minute = [int(p) for p in getattr(config, "LIVE_SCAN_START_TIME", "14:00").split(":")]
+                    end_hour, end_minute = [int(p) for p in getattr(config, "LIVE_SCAN_END_TIME", "15:30").split(":")]
+                    interval = getattr(config, "LIVE_SCAN_INTERVAL_MINUTES", 30)
+
+                    start_time = now.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+                    end_time = now.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+
+                    if start_time <= now <= end_time:
+                        # Ensures scans happen at intervals (e.g. xx:00 and xx:30)
+                        if now.minute % interval == 0:
+                            # Prevent multiple triggers within the same minute
+                            if last_run_time is None or (now - last_run_time).total_seconds() > 60:
+                                logger.info("Triggering scheduled live scan at %s", now.strftime("%H:%M:%S"))
+                                # Call the existing background worker trigger
+                                start_live_scan()
+                                last_run_time = now
+        except Exception:
+            logger.exception("Scheduled scan loop encountered an error")
+        
+        await asyncio.sleep(10)  # Check every 10 seconds
 
 @asynccontextmanager
 async def lifespan(api_app: FastAPI) -> AsyncIterator[None]:
-    """Ensure the SQLite schema exists before serving requests."""
+    """Ensure the SQLite schema exists before serving requests and start background tasks."""
     init_db()
+    
+    scan_task = None
+    if getattr(config, "LIVE_SCAN_SCHEDULE_ENABLED", False):
+        scan_task = asyncio.create_task(_scheduled_scan_loop())
+        
     yield
+
+    if scan_task:
+        scan_task.cancel()
 
 
 app = FastAPI(
@@ -495,16 +537,55 @@ def ohlcv_chart(symbol: str, days: int = 90) -> Dict[str, Any]:
 @app.get("/trades/open")
 def open_trades(live: bool = True) -> Dict[str, Any]:
     """Return open trades with current P&L and action flags.
-    
-    If live=True, fetches current prices to show real-time P&L.
+
+    If live=True, fetches current prices to show real-time P&L and persists them
+    as today's OHLCV candle so the chart always has a live bar without a full scan.
     """
     current_prices = None
     if live:
-        from src.ingestion.store import get_trades
+        from src.ingestion.store import get_trades, upsert_ohlcv, get_all_symbols_ohlcv
+        from datetime import date as _date
+
         active_symbols = get_trades(status=config.TRADE_DEFAULT_STATUS_OPEN)["symbol"].unique().tolist()
         if active_symbols:
             live_data = _price_cache.get_prices(active_symbols)
             current_prices = {s: d["price"] for s, d in live_data.items() if "price" in d}
+
+            # --- Persist live prices as today's OHLCV candle ---
+            # Uses the same _build_live_ohlcv_row logic as the full live-scan worker.
+            # INSERT OR REPLACE is idempotent; EOD fetcher at 16:30 overwrites with actual close.
+            today_str = _date.today().isoformat()
+            try:
+                existing_df = get_all_symbols_ohlcv(today_str, lookback_days=1)
+                existing_today: Dict[str, Any] = {}
+                previous_rows: Dict[str, Any] = {}
+                if not existing_df.empty:
+                    today_mask = existing_df["date"].dt.strftime("%Y-%m-%d") == today_str
+                    existing_today = {
+                        str(r["symbol"]): r.to_dict()
+                        for _, r in existing_df.loc[today_mask].iterrows()
+                    }
+                    previous_rows = {
+                        str(r["symbol"]): r.to_dict()
+                        for _, r in existing_df.loc[~today_mask]
+                        .sort_values(["symbol", "date"])
+                        .groupby("symbol")
+                        .tail(1)
+                        .iterrows()
+                    }
+                rows = []
+                for s, d in live_data.items():
+                    row = _build_live_ohlcv_row(
+                        s, today_str, d,
+                        existing_today=existing_today.get(s),
+                        previous_row=previous_rows.get(s),
+                    )
+                    if row:
+                        rows.append(row)
+                if rows:
+                    upsert_ohlcv(rows)
+            except Exception:
+                logger.exception("Failed to persist live OHLCV for open positions — skipping")
 
     trades = build_open_trade_status(current_prices=current_prices)
     return {

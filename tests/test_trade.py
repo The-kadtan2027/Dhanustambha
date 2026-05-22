@@ -232,6 +232,49 @@ def test_open_trade_status_flags_breakeven_trail(tmp_db):
     assert updated_status.iloc[0]["action_required"] == "NONE"
 
 
+def test_open_trade_status_flags_stop_loss_hit(tmp_db):
+    """A trade with current price at or below stop should request immediate close."""
+    from src.ingestion.store import init_db, upsert_ohlcv
+    from src.trade.log import build_open_trade_status, open_trade
+
+    init_db()
+    upsert_ohlcv(
+        [
+            {
+                "symbol": "ERIS",
+                "date": "2026-05-20",
+                "open": 1460.0,
+                "high": 1470.0,
+                "low": 1450.0,
+                "close": 1460.3,
+                "volume": 500000,
+            },
+            {
+                "symbol": "ERIS",
+                "date": "2026-05-21",
+                "open": 1435.0,
+                "high": 1440.0,
+                "low": 1387.0,
+                "close": 1391.1,
+                "volume": 700000,
+            },
+        ]
+    )
+    open_trade(
+        symbol="ERIS",
+        setup_type="EPISODIC_PIVOT",
+        entry_date="2026-05-20",
+        entry_price=1460.3,
+        shares=22,
+        stop_price=1429.65,
+    )
+
+    status_df = build_open_trade_status(as_of_date="2026-05-21")
+
+    assert float(status_df.iloc[0]["current_close"]) == 1391.1
+    assert status_df.iloc[0]["action_required"] == "STOP_LOSS_HIT"
+
+
 def test_open_trade_status_flags_advanced_trailing_tiers(tmp_db):
     """A trade up 8% should request TRAIL_TO_3PCT, up 11% should request TRAIL_TO_7_5PCT."""
     from src.ingestion.store import init_db, upsert_ohlcv

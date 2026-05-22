@@ -595,6 +595,10 @@ footer {
 .positionCard.winner { border-top: 3px solid var(--green); }
 .positionCard.loser  { border-top: 3px solid var(--red); }
 .positionCard.flat   { border-top: 3px solid var(--line); }
+.positionCard.stopHit {
+  border-color: rgba(255, 107, 107, 0.65);
+  border-top: 3px solid var(--red);
+}
 
 .positionCardHeader {
   align-items: flex-start;

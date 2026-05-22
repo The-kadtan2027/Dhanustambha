@@ -133,3 +133,96 @@ Since you chose Option A (Auto-Computed), the dashboard needs to know your total
 * Next to each trade, inline input fields to update the Stop Loss (Action: `PUT update`) or record a Close (Action: `PUT close`).
 
 Do these four design components sound good to you? Once you approve this, I will formally write up the Spec and we can kick off implementation!
+
+
+You are a debugging agent working on the Dhanustambha trading platform.
+
+MANDATORY FIRST STEPS:
+1. Read AGENT_RULES.md (sections 1, 4, and 8 especially)
+2. Read docs/architecture/ARCHITECTURE.md for context
+3. Read the specific source file(s) relevant to the bug
+
+THE BUG:
+NFO:     127.0.0.1:64970 - "GET /ohlcv/GVT%26D?days=365 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64970 - "GET /ohlcv/GLAND?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51902 - "GET /market/prices?symbols=GLAND,BLS,GPIL,ENRIN,IGIL,GVT&D,ELGIEQUIP HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\uvicorn\protocols\http\h11_impl.py", line 403, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\uvicorn\middleware\proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\fastapi\applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\errors.py", line 187, in __call__
+    raise exc
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\fastapi\routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\fastapi\routing.py", line 214, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\starlette\concurrency.py", line 39, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\anyio\to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\anyio\_backends\_asyncio.py", line 2518, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\gajuk\AppData\Roaming\Python\Python312\site-packages\anyio\_backends\_asyncio.py", line 1002, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\antigravity\Dhanustambha\src\api\main.py", line 294, in market_prices
+    prices = _price_cache.get_prices(sym_list)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\antigravity\Dhanustambha\src\api\main.py", line 76, in get_prices
+    return {s: {**self.data[s], "is_cached": False} for s in symbols}
+                  ~~~~~~~~~^^^
+KeyError: 'GVT'
+
+second issue is that user should be able to able to modify the computed shares to buy and stop loss in the trade modal. when user clicks on execute button in the watchlist table, it should open the trade modal and user should be able to modify the computed shares to buy and stop loss in the trade modal. and then click on confirm trade button to confirm the trade. deafult values can be computed values.
+
+YOUR DEBUGGING PROCESS:
+1. State your hypothesis for the root cause
+2. Show which file(s) and line(s) are involved
+3. Write a failing test that reproduces the bug BEFORE fixing it
+4. Implement the minimal fix
+5. Confirm the test passes
+6. Confirm no other tests broke: run `pytest tests/ -v`
+7. Commit: `fix(scope): description of what was wrong and how it was fixed`
+8. Update PROGRESS.md "Noted Issues" to mark the bug resolved
+
+Do not change anything outside the scope of this bug fix.

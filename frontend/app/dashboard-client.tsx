@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 import type { Market, Briefing, DateList, Trade, TradeList, TradeSummary } from '../types/api';
-import { formatNumber, verdictClass } from '../lib/format';
+import { formatNumber, labelFromToken, verdictClass } from '../lib/format';
 import { fetchJson } from '../lib/api';
 
 import Card from './components/ui/Card';
@@ -92,7 +92,14 @@ function TradeActionsPanel({
   filter: string;
   onFilterChange: (filter: string) => void;
 }) {
-  const actionTypes = ["ALL", "TRAIL_TO_BREAKEVEN", "TIME_EXIT"];
+  const actionTypes = [
+    "ALL",
+    "STOP_LOSS_HIT",
+    "TRAIL_TO_BREAKEVEN",
+    "TRAIL_TO_3PCT",
+    "TRAIL_TO_7_5PCT",
+    "TIME_EXIT"
+  ];
   const filteredTrades =
     filter === "ALL" ? trades : trades.filter((trade) => trade.action_required === filter);
 
@@ -106,7 +113,7 @@ function TradeActionsPanel({
             onClick={() => onFilterChange(actionType)}
             type="button"
           >
-            {actionType.replaceAll("_", " ")}
+            {labelFromToken(actionType)}
           </button>
         ))}
       </div>
@@ -118,7 +125,7 @@ function TradeActionsPanel({
             <div className="actionItem" key={trade.id}>
               <div>
                 <strong>{trade.symbol}</strong>
-                <span>{trade.action_required.replaceAll("_", " ")}</span>
+                <span>{labelFromToken(trade.action_required)}</span>
               </div>
               <div className="actionMeta">
                 {formatNumber(trade.pct_gain, 2)}% / {trade.days_held ?? "-"}d
@@ -286,7 +293,7 @@ export default function DashboardClient({
         <TrendingUp size={16} />
         <span>Read-only view backed by {apiBaseUrl}</span>
         <span className="footerFilter">
-          <Filter size={14} /> {actionFilter.replaceAll("_", " ")}
+          <Filter size={14} /> {labelFromToken(actionFilter)}
         </span>
       </footer>
     </main>

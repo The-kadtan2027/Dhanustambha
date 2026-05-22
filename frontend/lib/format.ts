@@ -28,5 +28,9 @@ export function verdictClass(verdict: string | undefined): string {
 
 export function setupLabel(setupType: string, notes: string | null | undefined): string {
   const marker = notes?.includes("A+") ? "A+ " : notes?.includes("HIGH") ? "HIGH " : "";
-  return `${marker}${setupType.replaceAll("_", " ")}`;
+  return `${marker}${labelFromToken(setupType)}`;
+}
+
+export function labelFromToken(value: string | null | undefined): string {
+  return value ? value.replaceAll("_", " ") : "-";
 }

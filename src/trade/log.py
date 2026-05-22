@@ -193,8 +193,12 @@ def determine_action_required(
     stop_price: float,
     pct_gain: Optional[float],
     days_held: int,
+    current_price: Optional[float] = None,
 ) -> str:
     """Return the trade-management action required by current gain and holding age."""
+    if current_price is not None and current_price <= stop_price:
+        return "STOP_LOSS_HIT"
+
     if days_held >= config.TRADE_TIME_EXIT_DAYS:
         return "TIME_EXIT"
 
@@ -275,6 +279,7 @@ def build_open_trade_status(
                 stop_price=float(row["stop_price"]),
                 pct_gain=pct_gain,
                 days_held=days_held,
+                current_price=float(latest_close) if latest_close is not None else None,
             )
         )
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import type { TradesBySymbol } from "../../../types/api";
-import { formatCurrency, formatNumber } from "../../../lib/format";
+import { formatCurrency, formatNumber, labelFromToken } from "../../../lib/format";
 import CandleChart, { type Candle } from "../../components/CandleChart";
 
 const TIMEFRAMES = [
@@ -88,10 +88,10 @@ export default function StockDetailClient({ apiBaseUrl, symbol, initialTradeData
                 <div className="metric"><span>Entry</span><strong style={{ fontSize: 16 }}>{formatCurrency(openTrade.entry_price)}</strong></div>
                 <div className="metric"><span>Stop</span><strong style={{ fontSize: 16 }}>{formatCurrency(openTrade.stop_price)}</strong></div>
                 <div className="metric"><span>Shares</span><strong style={{ fontSize: 16 }}>{openTrade.shares}</strong></div>
-                <div className="metric"><span>Setup</span><strong style={{ fontSize: 14 }}>{openTrade.setup_type.replaceAll("_", " ")}</strong></div>
+                <div className="metric"><span>Setup</span><strong style={{ fontSize: 14 }}>{labelFromToken(openTrade.setup_type)}</strong></div>
               </div>
               <div style={{ marginTop: 12, background: "var(--panel-muted)", borderRadius: 6, padding: "8px 12px", fontSize: 13 }}>
-                <strong>Action:</strong> {openTrade.action_required.replaceAll("_", " ")}
+                <strong>Action:</strong> {labelFromToken(openTrade.action_required)}
               </div>
             </>
           ) : closedTrades.length > 0 ? (
