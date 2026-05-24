@@ -294,7 +294,14 @@ function CandidateDetailPanel({
           {chartLoading ? (
             <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart...</div>
           ) : (
-            <CandleChart candles={candles} entryPrice={entryPrice} stopPrice={stopValue > 0 ? stopValue : undefined} height={400} />
+            <CandleChart
+              candles={candles}
+              entryPrice={entryPrice}
+              stopPrice={stopValue > 0 ? stopValue : undefined}
+              setupType={item.setup_type}
+              signalDate={date}
+              height={400}
+            />
           )}
         </form>
       ) : (
@@ -330,7 +337,12 @@ function CandidateDetailPanel({
           {chartLoading ? (
             <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart...</div>
           ) : (
-            <CandleChart candles={candles} height={400} />
+            <CandleChart
+              candles={candles}
+              setupType={item.setup_type}
+              signalDate={date}
+              height={400}
+            />
           )}
         </div>
       )}

@@ -99,7 +99,9 @@ export default function PositionCard({ trade, apiBaseUrl, onManageClick }: Props
           candles={candles}
           entryPrice={trade.entry_price}
           stopPrice={trade.stop_price}
-          height={220}
+          setupType={trade.setup_type}
+          signalDate={trade.entry_date ?? undefined}
+          height={240}
         />
       </div>
 

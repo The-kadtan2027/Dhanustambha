@@ -70,6 +70,8 @@ export default function StockDetailClient({ apiBaseUrl, symbol, initialTradeData
             candles={candles}
             entryPrice={openTrade?.entry_price}
             stopPrice={openTrade?.stop_price}
+            setupType={openTrade?.setup_type}
+            signalDate={openTrade?.entry_date ?? undefined}
             height={500}
           />
         </div>
