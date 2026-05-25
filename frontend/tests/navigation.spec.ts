@@ -69,3 +69,31 @@ test('market monitor has a dedicated breadth page', async ({ page }) => {
   await expect(page.getByRole('button', { name: '3M' })).toBeVisible();
   await expect(page.getByText('Daily Advances - Declines')).toBeVisible();
 });
+
+test('scanner detail exposes chart timeframe and resize controls', async ({ page }) => {
+  await page.goto('/scanners');
+
+  const dateSelect = page.locator('select');
+  if (await dateSelect.isDisabled()) {
+    test.skip(true, 'Scanner route has no stored briefing dates in this local environment.');
+  }
+
+  await dateSelect.selectOption('2026-05-11');
+  await expect(page.getByText('5 candidates found')).toBeVisible({ timeout: 10000 });
+
+  await page.getByRole('link', { name: 'AFFLE' }).click();
+
+  await expect(page.getByRole('button', { name: '3M' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '6M' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Expand Chart' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Compact Chart' })).toBeVisible();
+});
+
+test('market breadth page exposes resize controls and threshold labels', async ({ page }) => {
+  await page.goto('/market');
+
+  await expect(page.getByRole('button', { name: 'Expand Breadth Charts' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Compact Breadth Charts' })).toBeVisible();
+  await expect(page.getByText('Offensive Threshold')).toBeVisible();
+  await expect(page.getByText('Defensive Threshold')).toBeVisible();
+});

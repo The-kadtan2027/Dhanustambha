@@ -6,7 +6,7 @@ import {
   AlertTriangle,
   BarChart3,
   RefreshCw,
-  TrendingUp
+  TrendingUp,
 } from "lucide-react";
 import {
   Area,
@@ -15,10 +15,11 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
-  YAxis
+  YAxis,
 } from "recharts";
 
 import type { Market } from "../../types/api";
@@ -34,7 +35,7 @@ const TIMEFRAMES = [
   { label: "1M", days: 30 },
   { label: "3M", days: 90 },
   { label: "6M", days: 180 },
-  { label: "1Y", days: 365 }
+  { label: "1Y", days: 365 },
 ];
 
 function regimeLabel(market: Market | null): { text: string; cls: string } {
@@ -70,7 +71,7 @@ function BreadthMetric({
   label,
   value,
   helper,
-  tone = "neutral"
+  tone = "neutral",
 }: {
   label: string;
   value: string;
@@ -92,7 +93,8 @@ function SparkPanel({
   data,
   dataKey,
   color,
-  unit = ""
+  unit = "",
+  height = 190,
 }: {
   title: string;
   value: number | null | undefined;
@@ -100,6 +102,7 @@ function SparkPanel({
   dataKey: string;
   color: string;
   unit?: string;
+  height?: number;
 }) {
   return (
     <section className="marketChartPanel">
@@ -107,7 +110,7 @@ function SparkPanel({
         <span>{title}</span>
         <strong style={{ color }}>{value == null ? "-" : `${value.toFixed(1)}${unit}`}</strong>
       </div>
-      <ResponsiveContainer width="100%" height={190}>
+      <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 12, right: 8, left: -24, bottom: 0 }}>
           <defs>
             <linearGradient id={`market-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
@@ -123,9 +126,21 @@ function SparkPanel({
               background: "var(--panel)",
               border: "1px solid var(--line)",
               borderRadius: 6,
-              fontSize: 12
+              fontSize: 12,
             }}
           />
+          {dataKey === "ma20" && (
+            <>
+              <ReferenceLine y={55} stroke="rgba(19, 121, 91, 0.55)" strokeDasharray="4 4" />
+              <ReferenceLine y={45} stroke="rgba(154, 103, 0, 0.45)" strokeDasharray="4 4" />
+            </>
+          )}
+          {dataKey === "ma50" && (
+            <ReferenceLine y={50} stroke="rgba(19, 121, 91, 0.55)" strokeDasharray="4 4" />
+          )}
+          {dataKey === "netHL" && (
+            <ReferenceLine y={0} stroke="rgba(23, 32, 42, 0.25)" />
+          )}
           <Area
             dataKey={dataKey}
             dot={false}
@@ -144,6 +159,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
   const [market, setMarket] = useState(initialMarket);
   const [history, setHistory] = useState(initialHistory);
   const [days, setDays] = useState(90);
+  const [chartHeight, setChartHeight] = useState(260);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -153,7 +169,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
     try {
       const [latestResponse, historyResponse] = await Promise.all([
         fetch(`${apiBaseUrl}/market/breadth/latest`, { cache: "no-store" }),
-        fetch(`${apiBaseUrl}/market/breadth/history?days=${nextDays}`, { cache: "no-store" })
+        fetch(`${apiBaseUrl}/market/breadth/history?days=${nextDays}`, { cache: "no-store" }),
       ]);
       if (!latestResponse.ok || !historyResponse.ok) {
         throw new Error("Market breadth API is unavailable.");
@@ -182,7 +198,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
         ma50: row.pct_above_ma50 ?? null,
         upVolume: row.up_volume_ratio == null ? null : row.up_volume_ratio * 100,
         netAD: (row.advancing ?? 0) - (row.declining ?? 0),
-        netHL: (row.new_highs_52w ?? 0) - (row.new_lows_52w ?? 0)
+        netHL: (row.new_highs_52w ?? 0) - (row.new_lows_52w ?? 0),
       })),
     [history]
   );
@@ -220,6 +236,24 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
             ))}
           </div>
           <button
+            className="timeframeBtn"
+            aria-label="Compact Breadth Charts"
+            disabled={isLoading}
+            onClick={() => setChartHeight((value) => Math.max(220, value - 40))}
+            type="button"
+          >
+            Compact Breadth Charts
+          </button>
+          <button
+            className="timeframeBtn"
+            aria-label="Expand Breadth Charts"
+            disabled={isLoading}
+            onClick={() => setChartHeight((value) => Math.min(420, value + 40))}
+            type="button"
+          >
+            Expand Breadth Charts
+          </button>
+          <button
             className="iconButton"
             disabled={isLoading}
             onClick={() => loadMarket()}
@@ -240,9 +274,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
 
       <section className="marketRegimeBand">
         <div>
-          <span className={`regimeBadge ${regime.cls}`}>
-            {regime.text}
-          </span>
+          <span className={`regimeBadge ${regime.cls}`}>{regime.text}</span>
           <strong className={`verdict ${verdictClass(market?.verdict)}`}>
             {market?.verdict ?? "-"}
           </strong>
@@ -290,10 +322,23 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
         />
       </section>
 
+      <section className="marketThresholdStrip">
+        <div className="marketThresholdCard">
+          <span className="label">Offensive Threshold</span>
+          <strong>MA20 &gt; 55% · Up Volume &gt; 60%</strong>
+          <small>Trade aggressively only when breadth confirms expansion.</small>
+        </div>
+        <div className="marketThresholdCard">
+          <span className="label">Defensive Threshold</span>
+          <strong>MA20 &gt; 45% · Highs above lows</strong>
+          <small>Reduce size when the market is holding up but not broad enough.</small>
+        </div>
+      </section>
+
       <section className="marketDashboardGrid">
         <div className="marketChartPanel marketAdvancePanel">
           <div className="marketChartHeader">
-            <span>Today's Advance / Decline</span>
+            <span>Today&apos;s Advance / Decline</span>
             <strong>{ratio == null ? "-" : `${ratio.toFixed(2)} : 1`}</strong>
           </div>
           <div className="marketAdCounts">
@@ -317,7 +362,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
             <span>Daily Advances - Declines</span>
             <strong>{days}d</strong>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={chartHeight}>
             <BarChart data={chartData} margin={{ top: 12, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted)" }} />
@@ -327,9 +372,10 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
                   background: "var(--panel)",
                   border: "1px solid var(--line)",
                   borderRadius: 6,
-                  fontSize: 12
+                  fontSize: 12,
                 }}
               />
+              <ReferenceLine y={0} stroke="rgba(23, 32, 42, 0.3)" />
               <Bar dataKey="netAD" isAnimationActive={false} name="Net A/D">
                 {chartData.map((row) => (
                   <Cell
@@ -348,6 +394,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
           color="#2296c8"
           data={chartData}
           dataKey="ma20"
+          height={chartHeight}
           title="% Above 20 MA"
           unit="%"
           value={market?.pct_above_ma20}
@@ -356,6 +403,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
           color="#7c3aed"
           data={chartData}
           dataKey="ma50"
+          height={chartHeight}
           title="% Above 50 MA"
           unit="%"
           value={market?.pct_above_ma50}
@@ -364,6 +412,7 @@ export default function MarketClient({ apiBaseUrl, initialMarket, initialHistory
           color={netHL >= 0 ? "var(--green)" : "var(--red)"}
           data={chartData}
           dataKey="netHL"
+          height={chartHeight}
           title="Net Highs / Lows"
           value={netHL}
         />

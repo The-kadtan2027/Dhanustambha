@@ -776,6 +776,7 @@ Stream G is a research pipeline to improve scanner signal quality by identifying
 ✅ 2026-05-20 — UX: Added Execute button directly to watchlist table rows in `scanner-client.tsx`.
 ✅ 2026-05-20 — Bug fix: Live scanner timeouts resolved by switching yfinance interval from 1m to 1d.
 ✅ 2026-05-20 — Bug fix: Watchlist UI duplicates prevented by adding date-based clear before insertion in DB.
+✅ 2026-05-24 — Chart usability upgrade: shared price charts now expose richer decision context, scanner charts gained timeframe and resize controls, dashboard breadth panels gained resize controls, and the Market Monitor page now shows threshold-aware breadth charts plus resize controls.
 ```
 
 ---

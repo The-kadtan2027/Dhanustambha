@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  createChart,
   CandlestickSeries,
-  HistogramSeries,
-  LineSeries,
-  type IChartApi,
-  type CandlestickSeriesOptions,
   ColorType,
   CrosshairMode,
+  HistogramSeries,
+  LineSeries,
+  createChart,
+  type CandlestickSeriesOptions,
+  type IChartApi,
 } from "lightweight-charts";
 
 export type Candle = {
@@ -42,6 +42,8 @@ type Props = {
   height?: number;
   setupType?: string | null;
   signalDate?: string | null;
+  title?: string;
+  subtitle?: string;
 };
 
 function formatVol(v: number): string {
@@ -51,7 +53,7 @@ function formatVol(v: number): string {
 }
 
 function formatPrice(v: number): string {
-  return `₹${v.toFixed(2)}`;
+  return `Rs ${v.toFixed(2)}`;
 }
 
 function setupBadgeColor(setupType: string | null | undefined): string {
@@ -77,41 +79,41 @@ export default function CandleChart({
   height = 280,
   setupType,
   signalDate,
+  title,
+  subtitle,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [crosshair, setCrosshair] = useState<CrosshairData | null>(null);
-
-  // Build a lookup map: date → candle for fast crosshair resolution
   const candleMapRef = useRef<Map<string, Candle>>(new Map());
 
   useEffect(() => {
-    candleMapRef.current = new Map(candles.map((c) => [c.time, c]));
+    candleMapRef.current = new Map(candles.map((candle) => [candle.time, candle]));
   }, [candles]);
 
   const handleCrosshairMove = useCallback(
-    (param: { time?: unknown; seriesData?: Map<unknown, unknown> }) => {
+    (param: { time?: unknown }) => {
       if (!param.time) {
         setCrosshair(null);
         return;
       }
-      const dateStr = typeof param.time === "number"
-        ? new Date(param.time * 1000).toISOString().slice(0, 10)
-        : String(param.time);
-      const c = candleMapRef.current.get(dateStr);
-      if (c) {
-        setCrosshair({
-          date: dateStr,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume: c.volume,
-          ma20: c.ma20,
-          ma50: c.ma50,
-          isUp: c.close >= c.open,
-        });
-      }
+      const dateStr =
+        typeof param.time === "number"
+          ? new Date(param.time * 1000).toISOString().slice(0, 10)
+          : String(param.time);
+      const candle = candleMapRef.current.get(dateStr);
+      if (!candle) return;
+      setCrosshair({
+        date: dateStr,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+        ma20: candle.ma20,
+        ma50: candle.ma50,
+        isUp: candle.close >= candle.open,
+      });
     },
     []
   );
@@ -133,15 +135,15 @@ export default function CandleChart({
         fontFamily: "'Inter', 'DM Sans', system-ui, sans-serif",
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,0.04)" },
-        horzLines: { color: "rgba(255,255,255,0.04)" },
+        vertLines: { color: "rgba(23, 32, 42, 0.05)" },
+        horzLines: { color: "rgba(23, 32, 42, 0.05)" },
       },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: {
-        borderColor: "rgba(255,255,255,0.08)",
+        borderColor: "rgba(23, 32, 42, 0.12)",
       },
       timeScale: {
-        borderColor: "rgba(255,255,255,0.08)",
+        borderColor: "rgba(23, 32, 42, 0.12)",
         timeVisible: true,
         fixLeftEdge: false,
         fixRightEdge: false,
@@ -149,7 +151,6 @@ export default function CandleChart({
     });
     chartRef.current = chart;
 
-    // --- Candlestick series ---
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#22c55e",
       downColor: "#ef4444",
@@ -158,34 +159,29 @@ export default function CandleChart({
       wickDownColor: "#ef4444",
     } as Partial<CandlestickSeriesOptions>);
     candleSeries.setData(
-      candles.map((c) => ({
-        time: c.time as Parameters<typeof candleSeries.setData>[0][number]["time"],
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
+      candles.map((candle) => ({
+        time: candle.time as Parameters<typeof candleSeries.setData>[0][number]["time"],
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
       }))
     );
 
-    // --- Signal date marker: draw a colored price line at the signal candle's low ---
-    // (lightweight-charts v5 removed setMarkers from ISeriesApi; use createPriceLine instead)
     if (signalDate) {
-      const markerColor = setupBadgeColor(setupType);
-      const markerLabel = setupShortLabel(setupType);
       const signalCandle = candleMapRef.current.get(signalDate);
       if (signalCandle) {
         candleSeries.createPriceLine({
-          price: signalCandle.low * 0.997, // just below the wick
-          color: markerColor,
+          price: signalCandle.low * 0.997,
+          color: setupBadgeColor(setupType),
           lineWidth: 1,
-          lineStyle: 1, // dotted
+          lineStyle: 1,
           axisLabelVisible: true,
-          title: `▲ ${markerLabel}`,
+          title: `Signal ${setupShortLabel(setupType)}`,
         });
       }
     }
 
-    // --- Volume histogram (colored by candle direction) ---
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
@@ -194,15 +190,13 @@ export default function CandleChart({
       scaleMargins: { top: 0.82, bottom: 0 },
     });
     volumeSeries.setData(
-      candles.map((c) => ({
-        time: c.time as Parameters<typeof volumeSeries.setData>[0][number]["time"],
-        value: c.volume,
-        // Green for up-candles, red for down — standard trading convention
-        color: c.close >= c.open ? "rgba(34,197,94,0.45)" : "rgba(239,68,68,0.45)",
+      candles.map((candle) => ({
+        time: candle.time as Parameters<typeof volumeSeries.setData>[0][number]["time"],
+        value: candle.volume,
+        color: candle.close >= candle.open ? "rgba(34,197,94,0.45)" : "rgba(239,68,68,0.45)",
       }))
     );
 
-    // --- MA20 line (amber) ---
     const ma20Series = chart.addSeries(LineSeries, {
       color: "#f59e0b",
       lineWidth: 1,
@@ -211,14 +205,13 @@ export default function CandleChart({
     });
     ma20Series.setData(
       candles
-        .filter((c) => c.ma20 !== null)
-        .map((c) => ({
-          time: c.time as Parameters<typeof ma20Series.setData>[0][number]["time"],
-          value: c.ma20 as number,
+        .filter((candle) => candle.ma20 !== null)
+        .map((candle) => ({
+          time: candle.time as Parameters<typeof ma20Series.setData>[0][number]["time"],
+          value: candle.ma20 as number,
         }))
     );
 
-    // --- MA50 line (indigo) ---
     const ma50Series = chart.addSeries(LineSeries, {
       color: "#818cf8",
       lineWidth: 1,
@@ -227,14 +220,13 @@ export default function CandleChart({
     });
     ma50Series.setData(
       candles
-        .filter((c) => c.ma50 !== null)
-        .map((c) => ({
-          time: c.time as Parameters<typeof ma50Series.setData>[0][number]["time"],
-          value: c.ma50 as number,
+        .filter((candle) => candle.ma50 !== null)
+        .map((candle) => ({
+          time: candle.time as Parameters<typeof ma50Series.setData>[0][number]["time"],
+          value: candle.ma50 as number,
         }))
     );
 
-    // --- Entry price dashed line (green) ---
     if (entryPrice) {
       candleSeries.createPriceLine({
         price: entryPrice,
@@ -246,7 +238,6 @@ export default function CandleChart({
       });
     }
 
-    // --- Stop loss dashed line (red) ---
     if (stopPrice && stopPrice > 0) {
       candleSeries.createPriceLine({
         price: stopPrice,
@@ -259,25 +250,21 @@ export default function CandleChart({
     }
 
     chart.timeScale().fitContent();
+    chart.subscribeCrosshairMove((param) => handleCrosshairMove(param));
 
-    // Crosshair data panel handler
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    chart.subscribeCrosshairMove((param: any) => handleCrosshairMove(param));
-
-    // Responsive resize
-    const ro = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver(() => {
       if (containerRef.current) {
         chart.applyOptions({ width: containerRef.current.clientWidth });
       }
     });
-    ro.observe(containerRef.current);
+    resizeObserver.observe(containerRef.current);
 
     return () => {
-      ro.disconnect();
+      resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, entryPrice, stopPrice, height, setupType, signalDate, handleCrosshairMove]);
+  }, [candles, entryPrice, handleCrosshairMove, height, setupType, signalDate, stopPrice]);
 
   if (candles.length === 0) {
     return (
@@ -291,50 +278,85 @@ export default function CandleChart({
   const riskPct = showRiskZone
     ? (((entryPrice - stopPrice) / entryPrice) * 100).toFixed(2)
     : null;
+  const activeCandle = crosshair ?? (() => {
+    const last = candles[candles.length - 1];
+    if (!last) return null;
+    return {
+      date: last.time,
+      open: last.open,
+      high: last.high,
+      low: last.low,
+      close: last.close,
+      volume: last.volume,
+      ma20: last.ma20,
+      ma50: last.ma50,
+      isUp: last.close >= last.open,
+    };
+  })();
+  const visibleHigh = candles.reduce(
+    (acc, candle) => Math.max(acc, candle.high),
+    Number.NEGATIVE_INFINITY
+  );
+  const visibleLow = candles.reduce(
+    (acc, candle) => Math.min(acc, candle.low),
+    Number.POSITIVE_INFINITY
+  );
+  const lastCandle = candles[candles.length - 1];
+  const ma20Gap = lastCandle?.ma20 != null ? lastCandle.close - lastCandle.ma20 : null;
+  const ma50Gap = lastCandle?.ma50 != null ? lastCandle.close - lastCandle.ma50 : null;
 
   return (
-    <div style={{ marginTop: "12px", position: "relative" }}>
-      {/* Legend row */}
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          fontSize: "11px",
-          color: "#94a3b8",
-          marginBottom: "4px",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ color: "#f59e0b" }}>— MA20</span>
-        <span style={{ color: "#818cf8" }}>— MA50</span>
-        {entryPrice && <span style={{ color: "#22c55e" }}>-- Entry {formatPrice(entryPrice)}</span>}
+    <div className="chartShell" style={{ marginTop: "12px", position: "relative" }}>
+      <div className="chartSummaryBand">
+        <div>
+          <div className="chartSummaryTitle">{title ?? "Price Structure"}</div>
+          <div className="chartSummaryDate">
+            {activeCandle?.date ?? "-"}
+            {subtitle ? ` · ${subtitle}` : crosshair ? " · Hover" : " · Latest"}
+          </div>
+        </div>
+        <div className="chartSummaryStats">
+          <span className={`chartStat ${activeCandle?.isUp ? "up" : "down"}`}>
+            C {activeCandle ? formatPrice(activeCandle.close) : "-"}
+          </span>
+          <span className="chartStat">
+            Range {Number.isFinite(visibleLow) && Number.isFinite(visibleHigh)
+              ? `${formatPrice(visibleLow)}-${formatPrice(visibleHigh)}`
+              : "-"}
+          </span>
+          <span className="chartStat">Vol {activeCandle ? formatVol(activeCandle.volume) : "-"}</span>
+          {ma20Gap !== null && (
+            <span className={`chartStat ${ma20Gap >= 0 ? "up" : "down"}`}>
+              vs MA20 {ma20Gap >= 0 ? "+" : ""}{ma20Gap.toFixed(2)}
+            </span>
+          )}
+          {ma50Gap !== null && (
+            <span className={`chartStat ${ma50Gap >= 0 ? "up" : "down"}`}>
+              vs MA50 {ma50Gap >= 0 ? "+" : ""}{ma50Gap.toFixed(2)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="chartLegendRow">
+        <span style={{ color: "#f59e0b" }}>- MA20</span>
+        <span style={{ color: "#818cf8" }}>- MA50</span>
+        {signalDate && setupType && (
+          <span style={{ color: setupBadgeColor(setupType) }}>Signal {signalDate}</span>
+        )}
+        {entryPrice && <span style={{ color: "#22c55e" }}>Entry {formatPrice(entryPrice)}</span>}
         {stopPrice && stopPrice > 0 && (
-          <span style={{ color: "#ef4444" }}>-- Stop {formatPrice(stopPrice)}</span>
+          <span style={{ color: "#ef4444" }}>Stop {formatPrice(stopPrice)}</span>
         )}
-        {riskPct && (
-          <span style={{ color: "#ef4444", opacity: 0.7 }}>Risk {riskPct}%</span>
-        )}
+        {riskPct && <span style={{ color: "#ef4444", opacity: 0.7 }}>Risk {riskPct}%</span>}
         {setupType && (
-          <span
-            style={{
-              background: setupBadgeColor(setupType),
-              color: "#0f172a",
-              fontWeight: 700,
-              fontSize: "10px",
-              padding: "1px 5px",
-              borderRadius: "3px",
-              marginLeft: "auto",
-            }}
-          >
+          <span className="chartSetupBadge" style={{ background: setupBadgeColor(setupType) }}>
             {setupShortLabel(setupType)}
           </span>
         )}
       </div>
 
-      {/* Chart container relative wrapper for overlay */}
       <div style={{ position: "relative" }}>
-        {/* Crosshair floating data panel */}
         {crosshair && (
           <div
             style={{

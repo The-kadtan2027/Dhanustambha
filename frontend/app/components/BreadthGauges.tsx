@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
-  AreaChart, Area, BarChart, Bar, ReferenceLine,
-  ResponsiveContainer, XAxis, YAxis, Tooltip,
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 import type { Market } from "../../types/api";
 
@@ -34,22 +41,33 @@ function regimeLabel(market: Market): { text: string; cls: string } {
   return { text: "Cautious / Avoid", cls: "cautious" };
 }
 
-/** Detect dates where the regime verdict changed */
 function findRegimeChangesDates(history: Market[]): Array<{ date: string; verdict: string }> {
   const changes: Array<{ date: string; verdict: string }> = [];
-  for (let i = 1; i < history.length; i++) {
-    const prev = history[i - 1].verdict;
-    const curr = history[i].verdict;
-    if (prev && curr && prev !== curr) {
-      changes.push({ date: history[i].date?.slice(5) ?? "", verdict: curr });
+  for (let index = 1; index < history.length; index += 1) {
+    const previous = history[index - 1].verdict;
+    const current = history[index].verdict;
+    if (previous && current && previous !== current) {
+      changes.push({ date: history[index].date?.slice(5) ?? "", verdict: current });
     }
   }
   return changes;
 }
 
-function SparkCard({ title, value, unit, data, dataKey, color, regimeChanges }: {
-  title: string; value: number | null; unit?: string;
-  data: Record<string, unknown>[]; dataKey: string; color: string;
+function SparkCard({
+  title,
+  value,
+  unit,
+  data,
+  dataKey,
+  color,
+  regimeChanges,
+}: {
+  title: string;
+  value: number | null;
+  unit?: string;
+  data: Record<string, unknown>[];
+  dataKey: string;
+  color: string;
   regimeChanges: Array<{ date: string; verdict: string }>;
 }) {
   return (
@@ -68,6 +86,13 @@ function SparkCard({ title, value, unit, data, dataKey, color, regimeChanges }: 
           </defs>
           <XAxis dataKey="date" hide />
           <YAxis hide />
+          {(dataKey === "ma20" || dataKey === "ma50" || dataKey === "netHL") && (
+            <ReferenceLine
+              y={dataKey === "ma20" ? 55 : dataKey === "ma50" ? 50 : 0}
+              stroke="rgba(23, 32, 42, 0.25)"
+              strokeDasharray="4 4"
+            />
+          )}
           <Area
             type="monotone"
             dataKey={dataKey}
@@ -76,12 +101,11 @@ function SparkCard({ title, value, unit, data, dataKey, color, regimeChanges }: 
             fill={`url(#grad-${dataKey})`}
             dot={false}
           />
-          {/* Regime change vertical markers */}
-          {regimeChanges.map((rc) => (
+          {regimeChanges.map((regimeChange) => (
             <ReferenceLine
-              key={`${rc.date}-${rc.verdict}`}
-              x={rc.date}
-              stroke={REGIME_COLOR[rc.verdict] ?? "#94a3b8"}
+              key={`${regimeChange.date}-${regimeChange.verdict}`}
+              x={regimeChange.date}
+              stroke={REGIME_COLOR[regimeChange.verdict] ?? "#94a3b8"}
               strokeWidth={1}
               strokeDasharray="3 3"
             />
@@ -97,8 +121,10 @@ function SparkCard({ title, value, unit, data, dataKey, color, regimeChanges }: 
             itemStyle={{ color: "#fff" }}
             labelStyle={{ color: "#94a3b8", marginBottom: 2 }}
             labelFormatter={(label) => `Date: ${label}`}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            formatter={(val: any) => [val != null ? `${Number(val).toFixed(1)}${unit ?? ""}` : "-", title]}
+            formatter={((val: unknown) => [
+              val != null ? `${Number(val).toFixed(1)}${unit ?? ""}` : "-",
+              title,
+            ]) as never}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -109,49 +135,72 @@ function SparkCard({ title, value, unit, data, dataKey, color, regimeChanges }: 
 export default function BreadthGauges({ market, history: initialHistory, apiBaseUrl }: Props) {
   const [days, setDays] = useState(90);
   const [history, setHistory] = useState<Market[]>(initialHistory);
+  const [chartHeight, setChartHeight] = useState(100);
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/market/breadth/history?days=${days}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => setHistory(d.items ?? []))
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((payload) => setHistory(payload.items ?? []))
       .catch(() => {});
-  }, [days, apiBaseUrl]);
+  }, [apiBaseUrl, days]);
 
   const regime = regimeLabel(market);
-
   const advancing = market.advancing ?? 0;
   const declining = market.declining ?? 0;
   const total = advancing + declining || 1;
   const advPct = (advancing / total) * 100;
-  const ratio = declining > 0 ? (advancing / declining).toFixed(2) : "∞";
+  const ratio = declining > 0 ? (advancing / declining).toFixed(2) : "inf";
 
-  const chartData = history.map((h) => ({
-    date: h.date?.slice(5) ?? "",
-    ma20: h.pct_above_ma20 ?? null,
-    ma50: h.pct_above_ma50 ?? null,
-    netHL: (h.new_highs_52w ?? 0) - (h.new_lows_52w ?? 0),
-    netAD: (h.advancing ?? 0) - (h.declining ?? 0),
+  const chartData = history.map((row) => ({
+    date: row.date?.slice(5) ?? "",
+    ma20: row.pct_above_ma20 ?? null,
+    ma50: row.pct_above_ma50 ?? null,
+    netHL: (row.new_highs_52w ?? 0) - (row.new_lows_52w ?? 0),
+    netAD: (row.advancing ?? 0) - (row.declining ?? 0),
   }));
 
   const regimeChanges = findRegimeChangesDates(history);
 
   return (
     <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Regime Badge + Timeframe */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className={`regimeBadge ${regime.cls}`}>◆ {regime.text}</span>
-        <div className="timeframeBar">
-          {TIMEFRAMES.map((tf) => (
-            <button key={tf.label} className={`timeframeBtn ${days === tf.days ? "active" : ""}`}
-              onClick={() => setDays(tf.days)}>{tf.label}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span className={`regimeBadge ${regime.cls}`}>Diamond {regime.text}</span>
+        <div className="chartToolbar">
+          <div className="timeframeBar">
+            {TIMEFRAMES.map((timeframe) => (
+              <button
+                key={timeframe.label}
+                className={`timeframeBtn ${days === timeframe.days ? "active" : ""}`}
+                onClick={() => setDays(timeframe.days)}
+                type="button"
+              >
+                {timeframe.label}
+              </button>
+            ))}
+          </div>
+          <div className="chartResizeControls">
+            <button
+              type="button"
+              className="timeframeBtn"
+              aria-label="Compact Breadth Charts"
+              onClick={() => setChartHeight((value) => Math.max(80, value - 20))}
+            >
+              Compact Breadth Charts
             </button>
-          ))}
+            <button
+              type="button"
+              className="timeframeBtn"
+              aria-label="Expand Breadth Charts"
+              onClick={() => setChartHeight((value) => Math.min(180, value + 20))}
+            >
+              Expand Breadth Charts
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Regime Change Legend */}
       {regimeChanges.length > 0 && (
-        <div style={{ display: "flex", gap: 12, fontSize: 10, color: "#64748b" }}>
+        <div style={{ display: "flex", gap: 12, fontSize: 10, color: "#64748b", flexWrap: "wrap" }}>
           <span>Regime shifts:</span>
           {Object.entries(REGIME_COLOR).map(([verdict, color]) => (
             <span key={verdict} style={{ display: "flex", alignItems: "center", gap: 3 }}>
@@ -162,7 +211,6 @@ export default function BreadthGauges({ market, history: initialHistory, apiBase
         </div>
       )}
 
-      {/* A/D Ratio */}
       <div>
         <div className="adRatio">
           <div>
@@ -181,13 +229,13 @@ export default function BreadthGauges({ market, history: initialHistory, apiBase
         </div>
       </div>
 
-      {/* Daily A/D Bar Chart */}
       <div>
-        <div className="label" style={{ marginBottom: 6 }}>Daily Advances − Declines</div>
-        <ResponsiveContainer width="100%" height={100}>
+        <div className="label" style={{ marginBottom: 6 }}>Daily Advances - Declines</div>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <BarChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
             <XAxis dataKey="date" hide />
             <YAxis hide />
+            <ReferenceLine y={0} stroke="rgba(23, 32, 42, 0.25)" />
             <Tooltip
               contentStyle={{
                 background: "#1e293b",
@@ -199,19 +247,17 @@ export default function BreadthGauges({ market, history: initialHistory, apiBase
               itemStyle={{ color: "#fff" }}
               labelStyle={{ color: "#94a3b8" }}
               labelFormatter={(label) => `Date: ${label}`}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter={(val: any) => [val != null ? Number(val).toLocaleString() : "-", "Net A/D"]}
+              formatter={((val: unknown) => [
+                val != null ? Number(val).toLocaleString() : "-",
+                "Net A/D",
+              ]) as never}
             />
-            <Bar dataKey="netAD" name="Net A/D"
-              fill="#22c55e"
-              isAnimationActive={false}
-            />
-            {/* Regime change line markers on A/D chart too */}
-            {regimeChanges.map((rc) => (
+            <Bar dataKey="netAD" name="Net A/D" fill="#22c55e" isAnimationActive={false} />
+            {regimeChanges.map((regimeChange) => (
               <ReferenceLine
-                key={`ad-${rc.date}`}
-                x={rc.date}
-                stroke={REGIME_COLOR[rc.verdict] ?? "#94a3b8"}
+                key={`ad-${regimeChange.date}`}
+                x={regimeChange.date}
+                stroke={REGIME_COLOR[regimeChange.verdict] ?? "#94a3b8"}
                 strokeWidth={1}
                 strokeDasharray="3 3"
               />
@@ -220,23 +266,30 @@ export default function BreadthGauges({ market, history: initialHistory, apiBase
         </ResponsiveContainer>
       </div>
 
-      {/* Breadth Sparkline Cards */}
       <div className="breadthSparkGrid">
         <SparkCard
-          title="% Above MA20" value={market.pct_above_ma20}
-          unit="%" data={chartData} dataKey="ma20"
+          title="% Above MA20"
+          value={market.pct_above_ma20}
+          unit="%"
+          data={chartData}
+          dataKey="ma20"
           color={(market.pct_above_ma20 ?? 0) >= 55 ? "#22c55e" : (market.pct_above_ma20 ?? 0) >= 45 ? "#f59e0b" : "#ef4444"}
           regimeChanges={regimeChanges}
         />
         <SparkCard
-          title="% Above MA50" value={market.pct_above_ma50}
-          unit="%" data={chartData} dataKey="ma50"
+          title="% Above MA50"
+          value={market.pct_above_ma50}
+          unit="%"
+          data={chartData}
+          dataKey="ma50"
           color={(market.pct_above_ma50 ?? 0) >= 50 ? "#22c55e" : "#ef4444"}
           regimeChanges={regimeChanges}
         />
         <SparkCard
-          title="Net Highs/Lows" value={(market.new_highs_52w ?? 0) - (market.new_lows_52w ?? 0)}
-          data={chartData} dataKey="netHL"
+          title="Net Highs/Lows"
+          value={(market.new_highs_52w ?? 0) - (market.new_lows_52w ?? 0)}
+          data={chartData}
+          dataKey="netHL"
           color={((market.new_highs_52w ?? 0) - (market.new_lows_52w ?? 0)) >= 0 ? "#22c55e" : "#ef4444"}
           regimeChanges={regimeChanges}
         />

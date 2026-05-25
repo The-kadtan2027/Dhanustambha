@@ -460,6 +460,89 @@ tbody tr.selectedRow td {
   overflow-wrap: anywhere;
 }
 
+.chartShell {
+  background: linear-gradient(180deg, rgba(238, 242, 245, 0.75) 0%, rgba(255, 255, 255, 0.9) 100%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.chartSummaryBand {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.chartSummaryTitle {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chartSummaryDate {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.chartSummaryStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.chartStat {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.chartStat.up {
+  color: var(--green);
+}
+
+.chartStat.down {
+  color: var(--red);
+}
+
+.chartLegendRow {
+  align-items: center;
+  color: #94a3b8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.chartSetupBadge {
+  border-radius: 3px;
+  color: #0f172a;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: auto;
+  padding: 1px 5px;
+}
+
+.chartToolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.chartResizeControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 footer {
   align-items: center;
   color: var(--muted);
@@ -526,6 +609,12 @@ footer {
   .topbarControls {
     align-items: stretch;
     flex-wrap: wrap;
+  }
+
+  .chartSummaryBand,
+  .chartToolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .dateControl,
@@ -862,6 +951,30 @@ footer {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.marketThresholdStrip {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.marketThresholdCard {
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.marketThresholdCard strong {
+  display: block;
+  font-size: 16px;
+  margin: 8px 0 6px;
+}
+
+.marketThresholdCard small {
+  color: var(--muted);
+  display: block;
+}
+
 .marketChartPanel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -930,7 +1043,8 @@ footer {
 
 @media (max-width: 1100px) {
   .marketDashboardGrid,
-  .marketTrendGrid {
+  .marketTrendGrid,
+  .marketThresholdStrip {
     grid-template-columns: 1fr;
   }
 

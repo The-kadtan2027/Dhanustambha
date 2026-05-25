@@ -92,6 +92,7 @@
 - 2026-05-20 - Stream I: "Somewhat Live" Market Scanner implemented with async briefing pipeline and Dashboard integration.
 - 2026-05-20 - Performance: Optimized DB queries (60-day lookback) and increased fetcher concurrency (50 threads).
 - 2026-05-21 - Trade Book live-price refresh fix: `/trades/open`, `/trades/actions`, and `/trades/portfolio` now default to live quotes so a page reload or in-app refresh no longer regresses to stale DB closes; regression coverage added in `tests/test_api.py`.
+- 2026-05-24 - Chart usability upgrade: shared candlestick charts now expose richer price context, scanner detail gained timeframe and resize controls, dashboard breadth panels gained resize controls, and the dedicated market page now shows threshold-aware breadth charts plus resize controls.
 
 ## In Progress
 

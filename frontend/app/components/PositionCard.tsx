@@ -101,7 +101,9 @@ export default function PositionCard({ trade, apiBaseUrl, onManageClick }: Props
           stopPrice={trade.stop_price}
           setupType={trade.setup_type}
           signalDate={trade.entry_date ?? undefined}
-          height={240}
+          height={220}
+          title={`${trade.symbol} Setup`}
+          subtitle={`${labelFromToken(trade.setup_type)} · ${trade.shares ?? "-"} shares`}
         />
       </div>
 

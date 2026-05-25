@@ -63,7 +63,28 @@ YOUR DEBUGGING PROCESS:
 Do not change anything outside the scope of this bug fix.
 ```
 
+Bug report:
+- Where: website on page http://localhost:3000/trades 
+- What happens: for open position charts are not correctly showing candles for the open position. attaching the screenshot of the issue. to describe the issue in words: for open position the chart is not showing the candles.
+- What should happen: it should show the candles as per CMP. 
+
+Before fixing:
+1. Read the relevant file(s) in full — do not guess at their contents.
+2. Read AGENT_RULES.md
+3. Read docs/architecture/ARCHITECTURE.md for context
+4. Identify the root cause before writing a single line of code. Tell me what it is.
+
+Fix rules:
+- Smallest possible change. One surgical str_replace, not a rewrite.
+- Do not change unrelated code in the same file.
+- After fixing, run: pytest tests/ -v to confirm no type errors introduced.
+- If the fix requires a schema change, stop and ask me before proceeding.
+
+Show me the exact before/after diff of what you changed.
+
 ---
+
+
 
 ## PROMPT 3 — Adding a New Feature
 

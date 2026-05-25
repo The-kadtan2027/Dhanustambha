@@ -13,6 +13,12 @@ import { Target, AlertTriangle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import LiveScanController from "../components/LiveScanController";
 
+const CHART_TIMEFRAMES = [
+  { label: "3M", days: 90 },
+  { label: "6M", days: 180 },
+  { label: "1Y", days: 365 },
+] as const;
+
 type ScannerClientProps = {
   apiBaseUrl: string;
   initialBriefing: Briefing | null;
@@ -129,6 +135,8 @@ function CandidateDetailPanel({
   const [quote, setQuote] = useState<TradeQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [chartDays, setChartDays] = useState<number>(90);
+  const [chartHeight, setChartHeight] = useState<number>(420);
 
   useEffect(() => {
     setStopPrice("");
@@ -145,12 +153,12 @@ function CandidateDetailPanel({
   useEffect(() => {
     if (!item) { setCandles([]); return; }
     setChartLoading(true);
-    fetch(`${apiBaseUrl}/ohlcv/${item.symbol}?days=90`)
+    fetch(`${apiBaseUrl}/ohlcv/${item.symbol}?days=${chartDays}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data) => setCandles(data.candles ?? []))
       .catch(() => setCandles([]))
       .finally(() => setChartLoading(false));
-  }, [item, apiBaseUrl]);
+  }, [item, apiBaseUrl, chartDays]);
 
   const entryPrice = livePrice || item?.close || 0;
   const stopValue = Number(stopPrice);
@@ -254,6 +262,46 @@ function CandidateDetailPanel({
     }
   }
 
+  const timeframeLabel =
+    CHART_TIMEFRAMES.find((timeframe) => timeframe.days === chartDays)?.label ?? "Custom";
+
+  function renderChartControls() {
+    return (
+      <div className="chartToolbar" style={{ gridColumn: "1 / -1" }}>
+        <div className="timeframeBar">
+          {CHART_TIMEFRAMES.map((timeframe) => (
+            <button
+              key={timeframe.label}
+              type="button"
+              className={`timeframeBtn ${chartDays === timeframe.days ? "active" : ""}`}
+              onClick={() => setChartDays(timeframe.days)}
+            >
+              {timeframe.label}
+            </button>
+          ))}
+        </div>
+        <div className="chartResizeControls">
+          <button
+            type="button"
+            className="timeframeBtn"
+            aria-label="Compact Chart"
+            onClick={() => setChartHeight((value) => Math.max(320, value - 80))}
+          >
+            Compact Chart
+          </button>
+          <button
+            type="button"
+            className="timeframeBtn"
+            aria-label="Expand Chart"
+            onClick={() => setChartHeight((value) => Math.min(720, value + 80))}
+          >
+            Expand Chart
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Card title="Candidate Detail" icon={<Target size={18} />}>
       {isExecuting ? (
@@ -291,6 +339,7 @@ function CandidateDetailPanel({
             </button>
             <button type="button" onClick={() => setIsExecuting(false)}>Cancel</button>
           </div>
+          {renderChartControls()}
           {chartLoading ? (
             <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart...</div>
           ) : (
@@ -300,7 +349,9 @@ function CandidateDetailPanel({
               stopPrice={stopValue > 0 ? stopValue : undefined}
               setupType={item.setup_type}
               signalDate={date}
-              height={400}
+              height={chartHeight}
+              title={`${item.symbol} Entry Map`}
+              subtitle={`${timeframeLabel} window`}
             />
           )}
         </form>
@@ -334,6 +385,7 @@ function CandidateDetailPanel({
             <span className="label">Notes</span>
             <p>{item.notes || "-"}</p>
           </div>
+          {renderChartControls()}
           {chartLoading ? (
             <div style={{ fontSize: "11px", color: "var(--text-muted, #64748b)", paddingTop: "8px" }}>Loading chart...</div>
           ) : (
@@ -341,7 +393,9 @@ function CandidateDetailPanel({
               candles={candles}
               setupType={item.setup_type}
               signalDate={date}
-              height={400}
+              height={chartHeight}
+              title={`${item.symbol} Setup Map`}
+              subtitle={`${timeframeLabel} window`}
             />
           )}
         </div>

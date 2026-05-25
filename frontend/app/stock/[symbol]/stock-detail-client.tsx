@@ -73,6 +73,8 @@ export default function StockDetailClient({ apiBaseUrl, symbol, initialTradeData
             setupType={openTrade?.setup_type}
             signalDate={openTrade?.entry_date ?? undefined}
             height={500}
+            title={`${symbol} Price Map`}
+            subtitle={`${TIMEFRAMES.find((tf) => tf.days === days)?.label ?? "Custom"} window`}
           />
         </div>
 

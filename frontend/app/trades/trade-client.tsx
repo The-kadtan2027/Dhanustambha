@@ -160,7 +160,9 @@ export default function TradeClient({ apiBaseUrl, initialOpenTrades, initialPort
           <CandleChart candles={chartCandles}
             entryPrice={activeTrade.entry_price}
             stopPrice={actionMode === "UPDATE_STOP" ? (Number(newStop) || activeTrade.stop_price) : activeTrade.stop_price}
-            height={320} />
+            height={320}
+            title={`${activeTrade.symbol} Trade Map`}
+            subtitle={actionMode === "UPDATE_STOP" ? "Stop review" : "Exit review"} />
         </div>
       )}
 
